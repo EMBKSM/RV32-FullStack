@@ -1,0 +1,33 @@
+# ---- Python (verification harness) ----
+__pycache__/
+*.pyc
+
+# ---- OS / FUSE / editor artifacts ----
+.fuse_hidden*
+.DS_Store
+Thumbs.db
+*~
+*.bak
+*.swp
+
+# ---- Xilinx Vivado / FPGA build outputs ----
+.Xil/
+*.jou
+*.log
+*.str
+*.cache/
+*.runs/
+*.gen/
+*.sim/
+*.hw/
+*.ip_user_files/
+*.backup.*
+*.bit
+*.ltx
+vivado_pid*.str
+
+# ---- RISC-V toolchain build outputs ----
+*.o
+*.elf
+*.bin
+*.map

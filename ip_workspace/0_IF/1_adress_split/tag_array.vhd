@@ -7,6 +7,7 @@ entity tag_array is
         clk       : in  std_logic;
         reset     : in  std_logic;
         we        : in  std_logic;                            
+        inv       : in  std_logic;   -- I-Cache invalidate (FENCE.I / host load): clear all valid
         idx       : in  std_logic_vector(7 downto 0);         
         tag_in    : in  std_logic_vector(19 downto 0);        
         tag_out   : out std_logic_vector(19 downto 0);        
@@ -29,7 +30,9 @@ begin
         if reset = '1' then
             valid_mem <= (others => '0');
         elsif rising_edge(clk) then
-            if we = '1' then
+            if inv = '1' then
+                valid_mem <= (others => '0');   -- invalidate: single-cycle full clear
+            elsif we = '1' then
                 tag_mem(to_integer(unsigned(idx)))   <= tag_in;
                 valid_mem(to_integer(unsigned(idx))) <= '1';
             end if;
