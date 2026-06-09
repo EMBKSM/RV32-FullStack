@@ -1,14 +1,23 @@
 {
    "ActiveEmotionalView":"Default View",
-   "Default View_ScaleFactor":"1.25",
-   "Default View_TopLeft":"-377,-250",
+   "Default View_ScaleFactor":"0.953184",
+   "Default View_TopLeft":"-302,419",
    "ExpandedHierarchyInLayout":"",
    "guistr":"# # String gsaved with Nlview 7.8.0 2024-04-26 e1825d835c VDI=44 GEI=38 GUI=JA:21.0
 #  -string -flagsOSRD
-preplace inst orgate2_0 -pg 1 -lvl 2 -x 310 -y -110 -defaultsOSRD
-preplace inst pc_reg_0 -pg 1 -lvl 1 -x 100 -y -210 -defaultsOSRD
-levelinfo -pg 1 -10 100 310 410
-pagesize -pg 1 -db -bbox -sgen -10 -300 410 140
+preplace portBus imem_addr -pg 1 -lvl 5 -x 730 -y 690 -defaultsOSRD
+preplace inst orgate2_0 -pg 1 -lvl 2 -x 100 -y 590 -defaultsOSRD
+preplace inst pc_reg_0 -pg 1 -lvl 1 -x -140 -y 690 -defaultsOSRD
+preplace inst pc_adder_0 -pg 1 -lvl 2 -x 100 -y 850 -defaultsOSRD
+preplace inst next_pc_mux_0 -pg 1 -lvl 3 -x 340 -y 880 -defaultsOSRD
+preplace inst mux2_32_0 -pg 1 -lvl 3 -x 340 -y 710 -defaultsOSRD
+preplace inst orgate2_1 -pg 1 -lvl 2 -x 100 -y 710 -defaultsOSRD
+preplace inst ifid_reg_0 -pg 1 -lvl 4 -x 590 -y 550 -defaultsOSRD
+preplace netloc pc_reg_0_pc 1 1 4 -10J 520 NJ 520 470J 690 NJ
+preplace netloc pc_adder_0_pc_out 1 2 2 210 600 N
+preplace netloc next_pc_mux_0_next_pc 1 0 4 -250 790 NJ 790 NJ 790 470
+levelinfo -pg 1 -270 -140 100 340 590 730
+pagesize -pg 1 -db -bbox -sgen -270 0 890 1040
 "
 }
-
+0

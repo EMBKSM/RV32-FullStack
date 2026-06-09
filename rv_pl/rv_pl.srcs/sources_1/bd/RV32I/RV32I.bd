@@ -1,7 +1,7 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x0",
+      "boundary_crc": "0x3FDB52A93FDB52A9",
       "device": "xc7z020clg400-1",
       "gen_directory": "../../../../rv_pl.gen/sources_1/bd/RV32I",
       "name": "RV32I",
@@ -11,7 +11,19 @@
     },
     "design_tree": {
       "orgate2_0": "",
-      "pc_reg_0": ""
+      "pc_reg_0": "",
+      "pc_adder_0": "",
+      "next_pc_mux_0": "",
+      "mux2_32_0": "",
+      "orgate2_1": "",
+      "ifid_reg_0": ""
+    },
+    "ports": {
+      "imem_addr": {
+        "direction": "O",
+        "left": "31",
+        "right": "0"
+      }
     },
     "components": {
       "orgate2_0": {
@@ -29,6 +41,69 @@
         "xci_path": "ip\\RV32I_pc_reg_0_0\\RV32I_pc_reg_0_0.xci",
         "inst_hier_path": "pc_reg_0",
         "has_run_ip_tcl": "true"
+      },
+      "pc_adder_0": {
+        "vlnv": "user:rv32:pc_adder:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_pc_adder_0_0",
+        "xci_path": "ip\\RV32I_pc_adder_0_0\\RV32I_pc_adder_0_0.xci",
+        "inst_hier_path": "pc_adder_0",
+        "has_run_ip_tcl": "true"
+      },
+      "next_pc_mux_0": {
+        "vlnv": "user:rv32:next_pc_mux:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_next_pc_mux_0_0",
+        "xci_path": "ip\\RV32I_next_pc_mux_0_0\\RV32I_next_pc_mux_0_0.xci",
+        "inst_hier_path": "next_pc_mux_0",
+        "has_run_ip_tcl": "true"
+      },
+      "mux2_32_0": {
+        "vlnv": "user:rv32:mux2_32:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_mux2_32_0_0",
+        "xci_path": "ip\\RV32I_mux2_32_0_0\\RV32I_mux2_32_0_0.xci",
+        "inst_hier_path": "mux2_32_0",
+        "has_run_ip_tcl": "true"
+      },
+      "orgate2_1": {
+        "vlnv": "user:rv32:orgate2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_orgate2_1_0",
+        "xci_path": "ip\\RV32I_orgate2_1_0\\RV32I_orgate2_1_0.xci",
+        "inst_hier_path": "orgate2_1",
+        "has_run_ip_tcl": "true"
+      },
+      "ifid_reg_0": {
+        "vlnv": "user:rv32:ifid_reg:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_ifid_reg_0_0",
+        "xci_path": "ip\\RV32I_ifid_reg_0_0\\RV32I_ifid_reg_0_0.xci",
+        "inst_hier_path": "ifid_reg_0",
+        "has_run_ip_tcl": "true"
+      }
+    },
+    "nets": {
+      "next_pc_mux_0_next_pc": {
+        "ports": [
+          "next_pc_mux_0/next_pc",
+          "pc_reg_0/next_pc"
+        ]
+      },
+      "pc_adder_0_pc_out": {
+        "ports": [
+          "pc_adder_0/pc_out",
+          "next_pc_mux_0/pc_plus_4",
+          "ifid_reg_0/pc4_in"
+        ]
+      },
+      "pc_reg_0_pc": {
+        "ports": [
+          "pc_reg_0/pc",
+          "imem_addr",
+          "pc_adder_0/pc_in",
+          "ifid_reg_0/pc_in"
+        ]
       }
     }
   }
