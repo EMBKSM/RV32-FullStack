@@ -68,6 +68,7 @@ architecture Behavioral of rv32_soc is
 
     signal i_req : std_logic;
     signal d_req : std_logic;
+    signal ic_fence_i : std_logic;             -- FENCE.I invalidate pulse (core -> I$)
 begin
     mem_stall <= i_stall or d_stall;
     i_req     <= '1';                          -- always fetching
@@ -86,20 +87,21 @@ begin
                   dmem_we => dmem_we, dmem_re => dmem_re, dmem_rdata => dmem_rdata,
                   mem_stall => mem_stall,
                   dbg_commit => dbg_commit, dbg_rd => dbg_rd, dbg_wdata => dbg_wdata,
-                  dbg_reg_addr => dbg_reg_addr, dbg_reg_data => dbg_reg_data);
+                  dbg_reg_addr => dbg_reg_addr, dbg_reg_data => dbg_reg_data,
+                  ic_fence_i => ic_fence_i);
 
-    -- ================= I-cache (read-only) =================
-    u_icache : entity work.cache_unit
+    -- ================= I-cache (read-only, rebuilt from IF-line blocks) =====
+    -- addr_aligner + tag_array + comparator + cache_controller +
+    -- icache_data_array + icache_axi_adapter (was: D-cache cache_unit reuse).
+    u_icache : entity work.icache_unit
         port map (clk => clk, reset => reset,
-                  req => i_req, we => '0', addr => imem_addr,
-                  st_data => x"00000000", st_strb => "0000",
-                  rword => imem_rdata, stall => i_stall,
-                  ARADDR=>i_ARADDR,ARLEN=>i_ARLEN,ARSIZE=>i_ARSIZE,ARBURST=>i_ARBURST,
-                  ARVALID=>i_ARVALID,ARREADY=>i_ARREADY,RDATA=>i_RDATA,RLAST=>i_RLAST,
-                  RVALID=>i_RVALID,RREADY=>i_RREADY,
-                  AWADDR=>i_AWADDR,AWLEN=>i_AWLEN,AWSIZE=>i_AWSIZE,AWBURST=>i_AWBURST,
-                  AWVALID=>i_AWVALID,AWREADY=>i_AWREADY,WDATA=>i_WDATA,WSTRB=>i_WSTRB,
-                  WLAST=>i_WLAST,WVALID=>i_WVALID,WREADY=>i_WREADY,BVALID=>i_BVALID,BREADY=>i_BREADY);
+                  addr => imem_addr, rword => imem_rdata, stall => i_stall,
+                  fence_i => ic_fence_i, ext_inv => '0', iflush => open,
+                  ARADDR=>i_ARADDR,ARVALID=>i_ARVALID,ARREADY=>i_ARREADY,
+                  RDATA=>i_RDATA,RLAST=>i_RLAST,RVALID=>i_RVALID,RREADY=>i_RREADY,
+                  AWADDR=>i_AWADDR,AWVALID=>i_AWVALID,AWREADY=>i_AWREADY,
+                  WDATA=>i_WDATA,WSTRB=>i_WSTRB,WLAST=>i_WLAST,WVALID=>i_WVALID,WREADY=>i_WREADY,
+                  BVALID=>i_BVALID,BREADY=>i_BREADY);
 
     u_imem : entity work.axi_slave_mem
         generic map (WORDS => 4096)

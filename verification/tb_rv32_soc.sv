@@ -97,6 +97,21 @@ module tb_rv32_soc;
   function automatic logic [31:0] auipc_(int rd,imm20);  return Utype(imm20,rd,OP_AUIPC); endfunction
   function automatic logic [31:0] jal_ (int rd,off);     return Jtype(off,rd,OP_JAL); endfunction
   function automatic logic [31:0] jalr_(int rd,rs1,imm); return Itype(imm,rs1,0,rd,OP_JALR); endfunction
+  // ---- Zicsr + trap (SYSTEM, opcode 0x73) ----
+  function automatic logic [31:0] csrrw (int rd,csr,rs1);  return Itype(csr,rs1,1,rd,7'h73); endfunction
+  function automatic logic [31:0] csrrs (int rd,csr,rs1);  return Itype(csr,rs1,2,rd,7'h73); endfunction
+  function automatic logic [31:0] csrrc (int rd,csr,rs1);  return Itype(csr,rs1,3,rd,7'h73); endfunction
+  function automatic logic [31:0] csrrwi(int rd,csr,uimm); return Itype(csr,uimm,5,rd,7'h73); endfunction
+  function automatic logic [31:0] csrrsi(int rd,csr,uimm); return Itype(csr,uimm,6,rd,7'h73); endfunction
+  function automatic logic [31:0] csrrci(int rd,csr,uimm); return Itype(csr,uimm,7,rd,7'h73); endfunction
+  function automatic logic [31:0] csrr  (int rd,csr);      return Itype(csr,0,2,rd,7'h73);    endfunction // csrrs rd,csr,x0 (read-only)
+  function automatic logic [31:0] ecall_ ();               return 32'h00000073; endfunction
+  function automatic logic [31:0] ebreak_();               return 32'h00100073; endfunction
+  function automatic logic [31:0] mret_  ();               return 32'h30200073; endfunction
+  function automatic logic [31:0] fencei_();               return 32'h0000100F; endfunction // FENCE.I
+  // CSR addresses
+  localparam logic [11:0] CSR_MSTATUS=12'h300, CSR_MTVEC=12'h305, CSR_MSCRATCH=12'h340,
+                          CSR_MEPC=12'h341, CSR_MCAUSE=12'h342;
 
   // ---------------- DUT control ----------------
   int unsigned checks=0, errors=0;
@@ -308,6 +323,102 @@ module tb_rv32_soc;
       ck_reg(r,1,32'd4,"D JAL link"); ck_reg(r,3,32'd7,"D JAL target");
     prog='{ addi(1,0,0),addi(2,0,4),add_(1,1,2),addi(2,2,-1),bne_(2,0,-8) };   dut_run(prog,5,r);
       ck_reg(r,1,32'd10,"D loop sum");
+
+    // ============ directed: CSR (Zicsr) + Trap (ECALL/MRET/illegal) ============
+    // Independent hand-computed expecteds (the ISS does not model CSR/trap).
+    // rs1 sources for CSR writes are set up >=3 instrs earlier (no fwd into the
+    // CSR write port); CSR *result* consumers may be adjacent (csr value is
+    // folded into the EX/MEM result so normal forwarding applies). Each run
+    // starts with reset -> all CSRs = 0.
+    begin
+      logic [31:0] tp[];
+
+      // -- T1: CSRRW mscratch read/modify --
+      prog='{ addi(1,0,'h123), NOP,NOP,NOP,
+              csrrw(2,CSR_MSCRATCH,1), NOP,NOP,NOP,
+              csrrw(3,CSR_MSCRATCH,0) };                            dut_run(prog,9,r);
+        ck_reg(r,2,32'h0,    "CSR T1 mscratch old(=0)");
+        ck_reg(r,3,32'h123,  "CSR T1 mscratch RW readback");
+
+      // -- T2: CSRRS set / CSRRC clear bits --
+      prog='{ addi(1,0,'h0F0), NOP,NOP,NOP,
+              csrrw(0,CSR_MSCRATCH,1),
+              addi(4,0,'h00F), NOP,NOP,NOP,
+              csrrs(5,CSR_MSCRATCH,4), NOP,NOP,NOP,
+              csrr (6,CSR_MSCRATCH),
+              csrrc(7,CSR_MSCRATCH,4), NOP,NOP,NOP,
+              csrr (8,CSR_MSCRATCH) };                              dut_run(prog,19,r);
+        ck_reg(r,5,32'h0F0,"CSR T2 RS old");
+        ck_reg(r,6,32'h0FF,"CSR T2 after set");
+        ck_reg(r,7,32'h0FF,"CSR T2 RC old");
+        ck_reg(r,8,32'h0F0,"CSR T2 after clear");
+
+      // -- T3: CSRRWI / CSRRSI (immediate form) --
+      prog='{ csrrwi(0,CSR_MSCRATCH,9), NOP,NOP,NOP,
+              csrrsi(9,CSR_MSCRATCH,0) };                           dut_run(prog,5,r);
+        ck_reg(r,9,32'd9,"CSR T3 CSRRWI/CSRRSI");
+
+      // -- T4: ECALL -> mtvec handler, mcause=11, mepc=ecall_pc, younger squashed --
+      tp=new[24]; foreach (tp[i]) tp[i]=NOP;
+      tp[0]=addi(1,0,'h50);            // handler byte addr = idx20
+      tp[4]=csrrw(0,CSR_MTVEC,1);      // mtvec = 0x50
+      tp[8]=addi(10,0,111);            // x10=111 (older than ecall -> commits)
+      tp[9]=ecall_();                  // trap -> 0x50
+      tp[10]=addi(11,0,222);           // younger -> squashed (x11 stays 0)
+      tp[20]=addi(12,0,333);           // handler marker
+      tp[21]=csrr(13,CSR_MCAUSE);      // mcause = 11
+      tp[22]=csrr(14,CSR_MEPC);        // mepc = ecall pc = 9*4 = 0x24
+      dut_run(tp,24,r);
+        ck_reg(r,10,32'd111,"TRAP T4 pre-ecall commit");
+        ck_reg(r,11,32'd0,  "TRAP T4 younger squashed");
+        ck_reg(r,12,32'd333,"TRAP T4 handler reached");
+        ck_reg(r,13,32'd11, "TRAP T4 mcause=ECALL(11)");
+        ck_reg(r,14,32'h24, "TRAP T4 mepc=ecall_pc");
+
+      // -- T5: ECALL -> handler sets mepc+4 -> MRET resumes after ecall --
+      tp=new[34]; foreach (tp[i]) tp[i]=NOP;
+      tp[0]=addi(1,0,'h60);            // handler byte addr = idx24
+      tp[4]=csrrw(0,CSR_MTVEC,1);      // mtvec = 0x60
+      tp[8]=addi(10,0,111);            // x10=111
+      tp[9]=ecall_();                  // -> 0x60
+      tp[10]=addi(11,0,222);           // RESUME point (runs after MRET)
+      tp[11]=jal_(0,0);                // explicit HALT (park; don't fall into handler)
+      tp[24]=csrr(14,CSR_MEPC);        // x14 = ecall pc = 0x24
+      tp[25]=addi(15,14,4);            // x15 = resume = ecall_pc+4 = 0x28 (fwd from csr result)
+      tp[29]=csrrw(0,CSR_MEPC,15);     // mepc = 0x28
+      tp[33]=mret_();                  // PC <- mepc = 0x28 = idx10
+      dut_run(tp,34,r);
+        ck_reg(r,10,32'd111,"TRAP T5 pre-ecall");
+        ck_reg(r,14,32'h24, "TRAP T5 mepc captured");
+        ck_reg(r,15,32'h28, "TRAP T5 resume target");
+        ck_reg(r,11,32'd222,"TRAP T5 MRET resumed");
+
+      // -- T6: illegal instruction (0x00000000) -> mcause=2 --
+      tp=new[24]; foreach (tp[i]) tp[i]=NOP;
+      tp[0]=addi(1,0,'h50);
+      tp[4]=csrrw(0,CSR_MTVEC,1);
+      tp[8]=addi(10,0,111);
+      tp[9]=32'h00000000;              // illegal
+      tp[10]=addi(11,0,222);           // squashed
+      tp[20]=csrr(13,CSR_MCAUSE);      // mcause = 2 (illegal)
+      tp[21]=csrr(14,CSR_MEPC);        // mepc = 0x24
+      dut_run(tp,24,r);
+        ck_reg(r,10,32'd111,"TRAP T6 pre-illegal commit");
+        ck_reg(r,11,32'd0,  "TRAP T6 younger squashed");
+        ck_reg(r,13,32'd2,  "TRAP T6 mcause=ILLEGAL(2)");
+        ck_reg(r,14,32'h24, "TRAP T6 mepc=illegal_pc");
+
+      // -- T7: FENCE.I barrier must invalidate I$ WITHOUT corrupting execution --
+      // (Harvard static i-mem: re-fetch yields the same insns -> arch NOP, but
+      //  the invalidate path + stall are exercised; data path must be intact.)
+      prog='{ addi(1,0,5), addi(2,0,3), fencei_(), add_(3,1,2),
+              addi(4,0,'h40), addi(6,0,'h99), sw_(6,4,0), lw_(7,4,0) };
+      dut_run(prog,8,r);
+        ck_reg(r,1,32'd5,  "FENCE.I T7 x1 (pre-fence)");
+        ck_reg(r,2,32'd3,  "FENCE.I T7 x2 (pre-fence)");
+        ck_reg(r,3,32'd8,  "FENCE.I T7 x3 (cross-fence dep)");
+        ck_reg(r,7,32'h99, "FENCE.I T7 store/load intact");
+    end
 
     // --------- AT-30 random vs ISS (full SoC, real caches/AXI) ---------
     // Each random program is followed by 4 NOPs (so any forward branch/jal in
