@@ -65,6 +65,7 @@ module tb_rv32_core_if_wb;
     .imem_addr(imem_addr), .imem_rdata(imem_rdata),
     .dmem_addr(dmem_addr), .dmem_wdata(dmem_wdata), .dmem_wstrb(dmem_wstrb),
     .dmem_we(dmem_we), .dmem_re(dmem_re), .dmem_rdata(dmem_rdata),
+    .mem_stall(1'b0),                                   // ideal memory: never stalls
     .dbg_commit(dbg_commit), .dbg_rd(dbg_rd), .dbg_wdata(dbg_wdata),
     .dbg_reg_addr(dbg_reg_addr), .dbg_reg_data(dbg_reg_data)
   );

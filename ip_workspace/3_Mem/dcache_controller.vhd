@@ -32,7 +32,10 @@ entity dcache_controller is
 end dcache_controller;
 
 architecture Behavioral of dcache_controller is
-    type st_t is (D_IDLE, D_WB, D_ALLOC, D_REFILL, D_WAKE);
+    -- D_SWRITE: after a write-allocate refill, write the pending STORE word into
+    -- the just-filled line while still stalled (the core only advances when stall
+    -- drops in D_WAKE, so the store must be committed here, not by an IDLE retry).
+    type st_t is (D_IDLE, D_WB, D_ALLOC, D_REFILL, D_SWRITE, D_WAKE);
     signal st     : st_t := D_IDLE;
     signal access_v, miss : std_logic;
 begin
@@ -62,6 +65,12 @@ begin
                 stall <= '1'; rd_start <= '1';      -- fetch new line
             when D_REFILL =>
                 stall <= '1'; line_fill <= '1'; we_tag <= '1';
+            when D_SWRITE =>
+                stall <= '1';                       -- still frozen: store data held
+                if mem_write = '1' then
+                    data_we  <= '1';                -- write the store word into the line
+                    we_dirty <= '1';                -- mark line dirty
+                end if;
             when D_WAKE =>
                 wake_up <= '1';
         end case;
@@ -82,6 +91,8 @@ begin
                 when D_ALLOC =>
                     if axi_done = '1' then st <= D_REFILL; end if;
                 when D_REFILL =>
+                    st <= D_SWRITE;
+                when D_SWRITE =>
                     st <= D_WAKE;
                 when D_WAKE =>
                     st <= D_IDLE;

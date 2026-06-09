@@ -33,6 +33,9 @@ entity rv32_core is
         dmem_we      : out std_logic;
         dmem_re      : out std_logic;
         dmem_rdata   : in  std_logic_vector(31 downto 0);
+        -- global memory stall: when '1' the whole pipeline (PC + all 4 boundary
+        -- registers) freezes for a cache miss / multi-cycle memory access.
+        mem_stall    : in  std_logic;
         -- debug / scoreboard
         dbg_commit   : out std_logic;                       -- WB write committed (rd/=0)
         dbg_rd       : out std_logic_vector(4 downto 0);
@@ -63,13 +66,18 @@ architecture Behavioral of rv32_core is
     signal c_reg_write, c_mem_read, c_mem_write, c_alu_src, c_src_a_sel : std_logic;
     signal c_branch, c_jump                 : std_logic;
     signal c_alu_op, c_result_src           : std_logic_vector(1 downto 0);
-    -- unused-here control outputs of control_unit
+    -- CSR / Trap control outputs of control_unit
     signal u_csr_to_reg, u_csr_use_imm, u_is_ecall, u_is_ebreak,
            u_is_mret, u_is_fence_i, u_illegal : std_logic;
     signal u_csr_cmd                        : std_logic_vector(1 downto 0);
+    -- ID CSR operand build
+    signal id_csr_addr                      : std_logic_vector(11 downto 0);
+    signal id_zimm, id_csr_wdata            : std_logic_vector(31 downto 0);
+    signal id_csr_we, id_src_nonzero        : std_logic;
 
     -- ---------------- hazard ----------------
     signal load_use_stall, hz_flush         : std_logic;
+    signal core_stall                       : std_logic;  -- load-use OR mem_stall
 
     -- ---------------- ID/EX ----------------
     signal idex_pc, idex_pc4, idex_rs1d, idex_rs2d, idex_imm : std_logic_vector(31 downto 0);
@@ -79,6 +87,13 @@ architecture Behavioral of rv32_core is
     signal idex_reg_write, idex_mem_read, idex_mem_write,
            idex_alu_src, idex_src_a_sel, idex_branch, idex_jump : std_logic;
     signal idex_alu_op, idex_result_src     : std_logic_vector(1 downto 0);
+    -- CSR / Trap carried into EX
+    signal idex_csr_to_reg, idex_csr_we     : std_logic;
+    signal idex_csr_cmd                     : std_logic_vector(1 downto 0);
+    signal idex_csr_addr                    : std_logic_vector(11 downto 0);
+    signal idex_csr_wdata                   : std_logic_vector(31 downto 0);
+    signal idex_illegal, idex_is_ecall,
+           idex_is_ebreak, idex_is_mret     : std_logic;
 
     -- ---------------- EX (combinational) ----------------
     signal forward_a, forward_b             : std_logic_vector(1 downto 0);
@@ -89,6 +104,16 @@ architecture Behavioral of rv32_core is
     signal alu_zero                         : std_logic;
     signal ex_branch_taken, ex_pc_src       : std_logic;
     signal ex_target_addr                   : std_logic_vector(31 downto 0);
+    -- CSR file / trap unit (resolved in EX)
+    signal csr_rdata_ex                     : std_logic_vector(31 downto 0);
+    signal csr_we_qual, mret_qual           : std_logic;
+    signal mtvec_s, mepc_s, mstatus_s       : std_logic_vector(31 downto 0);
+    signal trap_taken_s, trap_taken_q, trap_we_s, trap_we_qual, flush_all_s : std_logic;
+    signal trap_target_s                    : std_logic_vector(31 downto 0);
+    signal trap_mepc_s, trap_mcause_s, trap_mtval_s : std_logic_vector(31 downto 0);
+    -- PC redirect (trap has priority over branch)
+    signal redirect_sel                     : std_logic;
+    signal redirect_target                  : std_logic_vector(31 downto 0);
 
     -- ---------------- EX/MEM ----------------
     signal exmem_alu_result, exmem_store, exmem_pc4 : std_logic_vector(31 downto 0);
@@ -96,6 +121,8 @@ architecture Behavioral of rv32_core is
     signal exmem_funct3                     : std_logic_vector(2 downto 0);
     signal exmem_reg_write, exmem_mem_read, exmem_mem_write : std_logic;
     signal exmem_result_src                 : std_logic_vector(1 downto 0);
+    signal exmem_csr_to_reg                 : std_logic;
+    signal exmem_csr_rdata                  : std_logic_vector(31 downto 0);
 
     -- ---------------- MEM (combinational) ----------------
     signal mem_byte_off                     : std_logic_vector(1 downto 0);
@@ -107,6 +134,8 @@ architecture Behavioral of rv32_core is
     signal memwb_rd                         : std_logic_vector(4 downto 0);
     signal memwb_reg_write                  : std_logic;
     signal memwb_result_src                 : std_logic_vector(1 downto 0);
+    signal memwb_csr_to_reg                 : std_logic;
+    signal memwb_csr_rdata                  : std_logic_vector(31 downto 0);
 
     -- ---------------- WB (combinational) ----------------
     signal wb_write_data                    : std_logic_vector(31 downto 0);
@@ -119,17 +148,24 @@ begin
     -- =================================================================
     -- IF stage
     -- =================================================================
+    -- global freeze: load-use bubble OR a memory miss holds the PC
+    core_stall <= load_use_stall or mem_stall;
+
     u_pc : entity work.pc_reg
         generic map (RESET_ADDR => RESET_ADDR)
-        port map (clk => clk, reset => reset, stall => load_use_stall,
+        port map (clk => clk, reset => reset, stall => core_stall,
                   next_pc => next_pc, pc => pc);
 
     u_pcadd : entity work.pc_adder
         port map (pc_in => pc, pc_out => pc_plus4);
 
+    -- redirect: trap (EX) overrides branch/jump (EX)
+    redirect_target <= trap_target_s when trap_taken_q = '1' else ex_target_addr;
+    redirect_sel    <= trap_taken_q or ex_pc_src;
+
     u_npc : entity work.next_pc_mux
-        port map (pc_plus_4 => pc_plus4, target_addr => ex_target_addr,
-                  pc_src => ex_pc_src, next_pc => next_pc);
+        port map (pc_plus_4 => pc_plus4, target_addr => redirect_target,
+                  pc_src => redirect_sel, next_pc => next_pc);
 
     imem_addr <= pc;
     instr_if  <= imem_rdata;
@@ -140,8 +176,10 @@ begin
         if reset = '1' then
             ifid_pc <= (others => '0'); ifid_pc4 <= (others => '0'); ifid_instr <= NOP;
         elsif rising_edge(clk) then
-            if ex_pc_src = '1' then
-                ifid_instr <= NOP;                 -- control-flow squash (younger fetch)
+            if mem_stall = '1' then
+                null;                              -- memory miss: freeze (highest priority)
+            elsif (ex_pc_src = '1' or trap_taken_q = '1') then
+                ifid_instr <= NOP;                 -- control-flow / trap squash (younger fetch)
                 ifid_pc    <= pc;  ifid_pc4 <= pc_plus4;
             elsif load_use_stall = '1' then
                 null;                              -- hold
@@ -189,6 +227,17 @@ begin
                   if_id_rs1 => id_rs1, if_id_rs2 => id_rs2,
                   stall => load_use_stall, flush => hz_flush);
 
+    -- CSR operand build (Zicsr): addr = instr[31:20], zimm = zero-ext rs1 field.
+    id_csr_addr  <= ifid_instr(31 downto 20);
+    id_zimm      <= std_logic_vector(resize(unsigned(ifid_instr(19 downto 15)), 32));
+    id_csr_wdata <= id_zimm when u_csr_use_imm = '1' else id_rs1_data;
+    -- side-effect rule: CSRRW always writes; CSRRS/RC write only if source /= 0
+    id_src_nonzero <= '1' when ((u_csr_use_imm = '1' and ifid_instr(19 downto 15) /= "00000")
+                            or  (u_csr_use_imm = '0' and id_rs1 /= "00000")) else '0';
+    id_csr_we    <= '1' when (u_csr_cmd = "01"
+                          or ((u_csr_cmd = "10" or u_csr_cmd = "11") and id_src_nonzero = '1'))
+                    else '0';
+
     -- ID/EX pipeline register (flush bubble on load-use OR branch taken)
     process(clk, reset)
         variable bubble : std_logic;
@@ -201,24 +250,42 @@ begin
             idex_reg_write <= '0'; idex_mem_read <= '0'; idex_mem_write <= '0';
             idex_alu_src <= '0'; idex_src_a_sel <= '0'; idex_branch <= '0'; idex_jump <= '0';
             idex_alu_op <= "00"; idex_result_src <= "00";
+            idex_csr_to_reg <= '0'; idex_csr_we <= '0'; idex_csr_cmd <= "00";
+            idex_csr_addr <= (others=>'0'); idex_csr_wdata <= (others=>'0');
+            idex_illegal <= '0'; idex_is_ecall <= '0'; idex_is_ebreak <= '0'; idex_is_mret <= '0';
         elsif rising_edge(clk) then
-            bubble := load_use_stall or ex_pc_src;
+          if mem_stall = '1' then
+            null;                                  -- memory miss: freeze ID/EX
+          else
+            -- a trap in EX squashes the instruction currently in ID, just like a branch
+            bubble := load_use_stall or ex_pc_src or trap_taken_q;
             -- data path (don't-care on bubble; pass through is fine)
             idex_pc   <= ifid_pc;   idex_pc4 <= ifid_pc4;
             idex_rs1d <= id_rs1_data; idex_rs2d <= id_rs2_data; idex_imm <= id_imm;
             idex_rs1  <= id_rs1;    idex_rs2 <= id_rs2; idex_rd <= id_rd;
             idex_funct3 <= id_funct3; idex_funct7_5 <= id_funct7_5; idex_jalr <= id_jalr;
+            -- CSR data operands (don't-care when nullified below)
+            idex_csr_addr  <= id_csr_addr;
+            idex_csr_wdata <= id_csr_wdata;
             if bubble = '1' then           -- nullify control -> NOP bubble
                 idex_reg_write <= '0'; idex_mem_read <= '0'; idex_mem_write <= '0';
                 idex_branch <= '0'; idex_jump <= '0';
                 idex_alu_src <= '0'; idex_src_a_sel <= '0';
                 idex_alu_op <= "00"; idex_result_src <= "00";
+                idex_csr_to_reg <= '0'; idex_csr_we <= '0'; idex_csr_cmd <= "00";
+                idex_illegal <= '0'; idex_is_ecall <= '0';
+                idex_is_ebreak <= '0'; idex_is_mret <= '0';
             else
                 idex_reg_write <= c_reg_write; idex_mem_read <= c_mem_read;
                 idex_mem_write <= c_mem_write; idex_alu_src <= c_alu_src;
                 idex_src_a_sel <= c_src_a_sel; idex_branch <= c_branch; idex_jump <= c_jump;
                 idex_alu_op <= c_alu_op; idex_result_src <= c_result_src;
+                idex_csr_to_reg <= u_csr_to_reg; idex_csr_we <= id_csr_we;
+                idex_csr_cmd <= u_csr_cmd;
+                idex_illegal <= u_illegal; idex_is_ecall <= u_is_ecall;
+                idex_is_ebreak <= u_is_ebreak; idex_is_mret <= u_is_mret;
             end if;
+          end if;   -- mem_stall freeze
         end if;
     end process;
 
@@ -256,6 +323,36 @@ begin
                   branch_taken => ex_branch_taken, pc_src => ex_pc_src,
                   target_addr => ex_target_addr);
 
+    -- ---------------- CSR / Trap (resolved in EX) ----------------
+    -- Commit guards: only act when the stage is actually advancing (a memory
+    -- stall freezes ID/EX, so idex_* persists -> must not re-commit each cycle).
+    csr_we_qual  <= idex_csr_we   and not mem_stall;
+    mret_qual    <= idex_is_mret  and not mem_stall;
+    trap_we_qual <= trap_we_s     and not mem_stall;
+    trap_taken_q <= trap_taken_s  and not mem_stall;
+
+    u_csr : entity work.csr_file
+        port map (clk => clk, reset => reset,
+                  csr_addr => idex_csr_addr, csr_cmd => idex_csr_cmd,
+                  csr_wdata => idex_csr_wdata, csr_we => csr_we_qual,
+                  csr_rdata => csr_rdata_ex,
+                  trap_we => trap_we_qual, trap_mepc => trap_mepc_s,
+                  trap_mcause => trap_mcause_s, trap_mtval => trap_mtval_s,
+                  is_mret => mret_qual,
+                  mstatus_o => mstatus_s, mtvec_o => mtvec_s, mepc_o => mepc_s);
+
+    u_trap : entity work.trap_unit
+        port map (illegal_instr => idex_illegal, instr_misalign => '0',
+                  load_misalign => '0', store_misalign => '0',
+                  is_ecall => idex_is_ecall, is_ebreak => idex_is_ebreak,
+                  is_mret => idex_is_mret,
+                  instr_pc => idex_pc, fault_addr => idex_pc,
+                  mtvec => mtvec_s, mepc => mepc_s,
+                  trap_taken => trap_taken_s, trap_target => trap_target_s,
+                  flush_all => flush_all_s, trap_we => trap_we_s,
+                  trap_mepc => trap_mepc_s, trap_mcause => trap_mcause_s,
+                  trap_mtval => trap_mtval_s);
+
     -- EX/MEM pipeline register
     process(clk, reset)
     begin
@@ -265,8 +362,19 @@ begin
             exmem_funct3 <= (others=>'0');
             exmem_reg_write <= '0'; exmem_mem_read <= '0'; exmem_mem_write <= '0';
             exmem_result_src <= "00";
+            exmem_csr_to_reg <= '0'; exmem_csr_rdata <= (others=>'0');
         elsif rising_edge(clk) then
-            exmem_alu_result <= alu_result_ex;
+          if mem_stall = '1' then
+            null;                                  -- memory miss: freeze EX/MEM
+          else
+            -- fold CSR read value into the result path for a CSR op
+            if idex_csr_to_reg = '1' then
+                exmem_alu_result <= csr_rdata_ex;
+            else
+                exmem_alu_result <= alu_result_ex;
+            end if;
+            exmem_csr_to_reg <= idex_csr_to_reg;
+            exmem_csr_rdata  <= csr_rdata_ex;
             exmem_store      <= fb_val;          -- forwarded rs2 = store data
             exmem_pc4        <= idex_pc4;
             exmem_rd         <= idex_rd;
@@ -275,6 +383,7 @@ begin
             exmem_mem_read   <= idex_mem_read;
             exmem_mem_write  <= idex_mem_write;
             exmem_result_src <= idex_result_src;
+          end if;   -- mem_stall freeze
         end if;
     end process;
 
@@ -305,19 +414,28 @@ begin
             memwb_read_data <= (others=>'0'); memwb_alu_result <= (others=>'0');
             memwb_pc4 <= (others=>'0'); memwb_rd <= (others=>'0');
             memwb_reg_write <= '0'; memwb_result_src <= "00";
+            memwb_csr_to_reg <= '0'; memwb_csr_rdata <= (others=>'0');
         elsif rising_edge(clk) then
+          if mem_stall = '1' then
+            null;                                  -- memory miss: freeze MEM/WB
+          else
             memwb_read_data  <= mem_read_data;
             memwb_alu_result <= exmem_alu_result;
             memwb_pc4        <= exmem_pc4;
             memwb_rd         <= exmem_rd;
             memwb_reg_write  <= exmem_reg_write;
             memwb_result_src <= exmem_result_src;
+            memwb_csr_to_reg <= exmem_csr_to_reg;
+            memwb_csr_rdata  <= exmem_csr_rdata;
+          end if;   -- mem_stall freeze
         end if;
     end process;
 
     -- =================================================================
     -- WB stage
     -- =================================================================
+    -- CSR result is folded into the ALU-result path at EX/MEM (so the existing
+    -- EX/MEM & MEM/WB forwarding works unchanged); result_src for CSR ops = "00".
     u_rmux : entity work.result_mux
         port map (result_src => memwb_result_src, csr_to_reg => '0',
                   alu_result => memwb_alu_result, read_data => memwb_read_data,
@@ -330,6 +448,8 @@ begin
         if reset = '1' then
             shadow <= (others => (others => '0'));
         elsif rising_edge(clk) then
+            -- mirror RF writes (idempotent during a freeze: MEM/WB holds, so the
+            -- same rd<=value is rewritten each stalled cycle -- harmless).
             if memwb_reg_write = '1' and memwb_rd /= "00000" then
                 shadow(to_integer(unsigned(memwb_rd))) <= wb_write_data;
             end if;
@@ -338,7 +458,7 @@ begin
 
     dbg_reg_data <= (others => '0') when dbg_reg_addr = "00000"
                     else shadow(to_integer(unsigned(dbg_reg_addr)));
-    dbg_commit <= '1' when (memwb_reg_write = '1' and memwb_rd /= "00000") else '0';
+    dbg_commit <= '1' when (mem_stall = '0' and memwb_reg_write = '1' and memwb_rd /= "00000") else '0';
     dbg_rd     <= memwb_rd;
     dbg_wdata  <= wb_write_data;
 
