@@ -1,0 +1,8 @@
+-- =====================================================================
+-- bd_mux_glue.vhd  -  DEPRECATED / reference only (do NOT add to a project).
+-- The glue entities were split into one-entity-per-file so each can be
+-- packaged as its own IP without duplicate-definition clashes:
+--   mux2_32.vhd  mux3_32.vhd  orgate2.vhd  andn2.vhd
+-- Use those files (and package_bd_glue.tcl) instead of this combined file.
+-- (Intentionally empty: contains no entities.)
+-- =====================================================================

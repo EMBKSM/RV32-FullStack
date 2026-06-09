@@ -1,0 +1,35 @@
+{
+  "design": {
+    "design_info": {
+      "boundary_crc": "0x0",
+      "device": "xc7z020clg400-1",
+      "gen_directory": "../../../../rv_pl.gen/sources_1/bd/RV32I",
+      "name": "RV32I",
+      "rev_ctrl_bd_flag": "RevCtrlBdOff",
+      "synth_flow_mode": "Hierarchical",
+      "tool_version": "2025.2"
+    },
+    "design_tree": {
+      "orgate2_0": "",
+      "pc_reg_0": ""
+    },
+    "components": {
+      "orgate2_0": {
+        "vlnv": "user:rv32:orgate2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_orgate2_0_0",
+        "xci_path": "ip\\RV32I_orgate2_0_0\\RV32I_orgate2_0_0.xci",
+        "inst_hier_path": "orgate2_0",
+        "has_run_ip_tcl": "true"
+      },
+      "pc_reg_0": {
+        "vlnv": "user:rv32:pc_reg:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_pc_reg_0_0",
+        "xci_path": "ip\\RV32I_pc_reg_0_0\\RV32I_pc_reg_0_0.xci",
+        "inst_hier_path": "pc_reg_0",
+        "has_run_ip_tcl": "true"
+      }
+    }
+  }
+}
