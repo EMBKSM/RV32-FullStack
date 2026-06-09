@@ -2,12 +2,12 @@
 // x0 hardwired 0; sync write on clk; combinational read with write-first bypass.
 `timescale 1ns/1ps
 module tb_register_file;
-  logic clk=0, we3;
+  logic clk=0, reset, we3;
   logic [4:0]  a1,a2,a3;
   logic [31:0] wd3, rd1, rd2;
   always #5 clk=~clk;
 
-  register_file dut (.clk(clk), .we3(we3), .a1(a1), .a2(a2), .a3(a3),
+  register_file dut (.clk(clk), .reset(reset), .we3(we3), .a1(a1), .a2(a2), .a3(a3),
                      .wd3(wd3), .rd1(rd1), .rd2(rd2));
 
   int errors=0, checks=0;
@@ -19,7 +19,9 @@ module tb_register_file;
   endtask
 
   initial begin
-    we3=0; a1=0; a2=0; a3=0; wd3=0; @(negedge clk);
+    reset=1; we3=0; a1=0; a2=0; a3=0; wd3=0; @(posedge clk); @(negedge clk); reset=0;
+    // x1..x31 cleared by sync reset
+    a1=5'd1; #1; ck(rd1==32'h0, "post-reset x1=0");
     // write x5, read back
     wr(5'd5, 32'h1234_5678); a1=5'd5; #1; ck(rd1==32'h1234_5678, "read x5");
     // x0 always 0 even after attempted write

@@ -180,7 +180,7 @@ begin
         port map (instr => ifid_instr, opcode => id_opcode, imm => id_imm);
 
     u_rf : entity work.register_file
-        port map (clk => clk, we3 => memwb_reg_write,
+        port map (clk => clk, reset => reset, we3 => memwb_reg_write,
                   a1 => id_rs1, a2 => id_rs2, a3 => memwb_rd, wd3 => wb_write_data,
                   rd1 => id_rs1_data, rd2 => id_rs2_data);
 

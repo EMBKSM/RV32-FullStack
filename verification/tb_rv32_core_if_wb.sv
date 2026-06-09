@@ -366,10 +366,42 @@ module tb_rv32_core_if_wb;
   int n_programs = 500;          // AT-30 sweep size (override with +PROGRAMS=)
   int mism = 0;
 
+  // ---- debug monitors (enabled only during a +DEBUGPROG run) ----
+  bit mon_on = 0;
+  always @(posedge clk) begin
+    if (mon_on && dmem_we)
+      $display("[ST ] t=%0t addr=%08x wstrb=%b wdata=%08x", $time, dmem_addr, dmem_wstrb, dmem_wdata);
+    if (mon_on && dmem_re)
+      $display("[LD ] t=%0t addr=%08x rdata=%08x", $time, dmem_addr, dmem_rdata);
+    if (mon_on && dbg_commit)
+      $display("[WB ] t=%0t x%0d <= %08x", $time, dbg_rd, dbg_wdata);
+  end
+
   initial begin
     logic [31:0] gp[];
     logic [31:0] gr[0:31];
     if ($value$plusargs("PROGRAMS=%d", n_programs)) ;
+
+    // ===================== +DEBUGPROG: trace the known counter-example =====================
+    if ($test$plusargs("DEBUGPROG")) begin
+      logic [31:0] dp[];
+      dp = new[40];
+      dp = '{32'h00139463,32'h0c10e013,32'h04801823,32'h04801823,32'h41535213,
+             32'h41615213,32'h04200223,32'h00c0026f,32'h39002013,32'h0001a133,
+             32'h0d199197,32'h00744663,32'hfcc300b7,32'hc9b76337,32'h008003ef,
+             32'h408000b3,32'h6f606393,32'hba92a413,32'h0041a333,32'h7d2ae417,
+             32'h00004133,32'h02b0a3b7,32'h003083b3,32'hac212013,32'h0080016f,
+             32'h0073a033,32'h04601223,32'h05002083,32'h4043d413,32'h00739463,
+             32'h04501223,32'h0073e863,32'h04800403,32'h0b30a413,32'h04002403,
+             32'h04402823,32'h04402203,32'h40a1d393,32'h00817863,32'h0d726293};
+      $display("==== DEBUGPROG: store / load / WB trace ====");
+      mon_on = 1; dut_run(dp, 40, r); mon_on = 0;
+      $display("---- final dmem around 0x40..0x5c ----");
+      for (int a = 16; a <= 23; a++)
+        $display("  dmem[%0d] (addr 0x%02x) = %08x", a, a*4, dmem[a]);
+      $display("---- FINAL x4 = %08x (expected 0) ----", r[4]);
+      $finish;
+    end
 
     // ===================== AT-01..AT-29 (directed) =====================
     prog = '{ addi(1,0,5) };                                       dut_run(prog,1,r);
@@ -484,17 +516,29 @@ module tb_rv32_core_if_wb;
       ck_reg(r,7,32'd7,"TIMING branch target executes");
 
     // ===================== AT-30 random counter-example =====================
+    // On the FIRST mismatching program, dump the whole program (copy-pasteable)
+    // plus the full DUT-vs-ISS register file, then stop -- this gives a single
+    // reproducible counter-example to analyse instead of a flood of reg diffs.
     for (int k = 0; k < n_programs; k++) begin
+      bit bad;
       gen_random(40, gp);
       dut_run(gp, 40, r);
       iss_run(gp, 40, gr);
       checks++;
-      for (int i = 0; i < 32; i++) begin
-        if (r[i] !== gr[i]) begin
-          errors++; mism++;
-          if (mism <= 3)
-            $error("AT-30 COUNTER-EXAMPLE prog#%0d: x%0d dut=%h iss=%h", k, i, r[i], gr[i]);
-        end
+      bad = 1'b0;
+      for (int i = 0; i < 32; i++) if (r[i] !== gr[i]) bad = 1'b1;
+      if (bad) begin
+        errors++; mism++;
+        $display("======== AT-30 COUNTER-EXAMPLE prog#%0d ========", k);
+        $display("---- program (40 words, copy-paste) ----");
+        for (int i = 0; i < 40; i++)
+          $display("  prog[%0d]=32'h%08x;", i, gp[i]);
+        $display("---- register file (xN: DUT vs ISS) ----");
+        for (int i = 0; i < 32; i++)
+          $display("  x%0d:\tDUT=%08x\tISS=%08x%s", i, r[i], gr[i],
+                   (r[i] !== gr[i]) ? "   <-- DIFF" : "");
+        $display("======== stopping at first counter-example ========");
+        $finish;
       end
     end
 
