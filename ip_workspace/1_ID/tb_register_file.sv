@@ -33,7 +33,7 @@ module tb_register_file;
     a1=5'd7; a3=5'd7; wd3=32'hCAFEBABE; we3=1; #1;
     ck(rd1==32'hCAFEBABE, "write-first bypass rs1=rd");
     a2=5'd7; #1; ck(rd2==32'hCAFEBABE, "write-first bypass rs2=rd");
-    we3=0; @(posedge clk); @(negedge clk);
+    @(posedge clk); we3=0; @(negedge clk);   // hold we3=1 THROUGH the edge to actually commit
     a1=5'd7; #1; ck(rd1==32'hCAFEBABE, "bypass committed");
     // write-first to x0 still reads 0
     a1=5'd0; a3=5'd0; wd3=32'h99; we3=1; #1; ck(rd1==32'h0, "x0 no bypass"); we3=0;
