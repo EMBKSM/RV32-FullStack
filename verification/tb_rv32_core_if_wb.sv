@@ -447,6 +447,42 @@ module tb_rv32_core_if_wb;
               sw_(10,2,0),sw_(11,3,0),lw_(4,2,0),lw_(5,3,0) };     dut_run(prog,8,r);
       ck_reg(r,4,32'hAA,"AT-29 lw x4"); ck_reg(r,5,32'hBB,"AT-29 lw x5");
 
+    // ===================== 3-point boundary value analysis (integration) =====================
+    // I-type signed immediate edge: +2046 / +2047(max) / -2048(min)
+    prog = '{ addi(1,0,2046), addi(2,0,2047), addi(3,0,-2048) }; dut_run(prog,3,r);
+      ck_reg(r,1,32'd2046,    "BVA imm +2046");
+      ck_reg(r,2,32'd2047,    "BVA imm +2047 (max+)");
+      ck_reg(r,3,32'hFFFFF800,"BVA imm -2048 (min-)");
+    // load sign edge: store 0x80, LB sign-extends (-128), LBU zero-extends (+128)
+    prog = '{ addi(2,0,'h40), addi(5,0,'h80), sb_(5,2,0), lb_(1,2,0), lbu_(3,2,0) }; dut_run(prog,5,r);
+      ck_reg(r,1,32'hFFFFFF80,"BVA LB sign -128");
+      ck_reg(r,3,32'h00000080,"BVA LBU +128");
+    // shift-amount edge: shamt 30 / 31 (max)
+    prog = '{ addi(1,0,1), slli(2,1,30), slli(3,1,31) }; dut_run(prog,3,r);
+      ck_reg(r,2,32'h40000000,"BVA SLLI sh=30");
+      ck_reg(r,3,32'h80000000,"BVA SLLI sh=31 (max)");
+
+    // ===================== timing-issue tests (pipeline cycle timing) =====================
+    // Two consecutive load-use hazards: each must insert exactly 1 bubble then
+    // forward the loaded value from MEM/WB into EX (stall+forward interplay).
+    prog = '{ addi(2,0,'h40), addi(6,0,'h11), sw_(6,2,0),
+              lw_(1,2,0), addi(3,1,1),       // load-use #1 (x1 -> immediate use)
+              lw_(4,2,0), addi(5,4,2) };     // load-use #2 (x4 -> immediate use)
+      dut_run(prog,7,r);
+      ck_reg(r,1,32'h11,"TIMING load #1 value");
+      ck_reg(r,3,32'h12,"TIMING load-use #1 (0x11+1 via MEM/WB fwd)");
+      ck_reg(r,4,32'h11,"TIMING load #2 value");
+      ck_reg(r,5,32'h13,"TIMING load-use #2 (0x11+2 via MEM/WB fwd)");
+    // Branch resolved in EX must flush exactly 2 instructions (2-bubble);
+    // the two skipped slots must NOT commit.
+    prog = '{ addi(1,0,1), addi(2,0,1), beq_(1,2,12),  // taken: skip next two
+              addi(9,0,99), addi(8,0,88),               // both squashed
+              addi(7,0,7) };                            // branch target
+      dut_run(prog,6,r);
+      ck_reg(r,9,32'd0,"TIMING branch 2-bubble: slot1 squashed");
+      ck_reg(r,8,32'd0,"TIMING branch 2-bubble: slot2 squashed");
+      ck_reg(r,7,32'd7,"TIMING branch target executes");
+
     // ===================== AT-30 random counter-example =====================
     for (int k = 0; k < n_programs; k++) begin
       gen_random(40, gp);

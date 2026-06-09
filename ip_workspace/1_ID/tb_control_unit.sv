@@ -35,6 +35,12 @@ module tb_control_unit;
     instr_31_20=12'h302; #1; ck(is_mret, "MRET");
     opcode=7'b0001111; funct3=3'b001; #1; ck(is_fence_i, "FENCE.I");
     opcode=7'b0000000; #1; ck(illegal, "illegal");
+    // ---- 3-point boundary value analysis (SYSTEM imm edges + CSR funct3 edge) ----
+    opcode=7'b1110011; funct3=3'b000; instr_31_20=12'h000; #1; ck(is_ecall && !is_ebreak && !is_mret, "BVA imm=0x000 ECALL");
+    instr_31_20=12'h001; #1; ck(is_ebreak && !is_ecall, "BVA imm=0x001 EBREAK");
+    instr_31_20=12'h002; #1; ck(!is_ecall && !is_ebreak && !is_mret, "BVA imm=0x002 none");
+    opcode=7'b1110011; funct3=3'b001; #1; ck(csr_cmd==2'b01 && csr_to_reg, "BVA funct3=001 CSRRW");
+    funct3=3'b100; #1; ck(illegal, "BVA funct3=100 illegal edge");
     $display("[tb_control_unit] checks=%0d errors=%0d", checks, errors);
     if (errors==0) $display("RESULT: ALL PASS"); else $fatal(1, "RESULT: FAIL");
     $finish;

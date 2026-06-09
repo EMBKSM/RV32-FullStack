@@ -93,6 +93,17 @@ module tb_alu;
     at(32'hFFFFFFFF, 32'h0000001F, 4'b0110, 32'h00000001, "AT-29 SRL 31");
     at_rand(100000);                                         // AT-30 counter-example sweep
 
+    // ---- 3-point boundary value analysis (ADD wrap, shamt 30/31/32, sign edge) ----
+    at(32'hFFFFFFFE, 32'h00000001, 4'b0000, 32'hFFFFFFFF, "BVA ADD max-1");
+    at(32'hFFFFFFFF, 32'h00000001, 4'b0000, 32'h00000000, "BVA ADD wrap");
+    at(32'h00000000, 32'h00000001, 4'b0000, 32'h00000001, "BVA ADD min+1");
+    at(32'h00000001, 32'h0000001E, 4'b0101, 32'h40000000, "BVA SLL sh=30");
+    at(32'h00000001, 32'h0000001F, 4'b0101, 32'h80000000, "BVA SLL sh=31 (max)");
+    at(32'h00000001, 32'h00000020, 4'b0101, 32'h00000001, "BVA SLL sh=32 -> mask 0");
+    at(32'h7FFFFFFF, 32'h80000000, 4'b1000, 32'h00000000, "BVA SLT maxpos<maxneg=0");
+    at(32'h80000000, 32'h7FFFFFFF, 4'b1000, 32'h00000001, "BVA SLT maxneg<maxpos=1");
+    at(32'h7FFFFFFF, 32'h80000000, 4'b1001, 32'h00000001, "BVA SLTU divergence=1");
+
     $display("[tb_alu] checks=%0d errors=%0d", checks, errors);
     if (errors == 0) $display("RESULT: ALL PASS (30 acceptance tests)");
     else             $fatal(1, "RESULT: FAIL (%0d errors)", errors);

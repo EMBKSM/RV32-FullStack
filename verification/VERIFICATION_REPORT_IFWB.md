@@ -96,6 +96,69 @@ RV32 IF~WB Write-Path 통합 수용 테스트 (ATDD / Shift-Left)
 - **반복:** AT-01~29(directed) + AT-30 sweep = 30 iteration; AT-30 누적 8,000 프로그램.
 - **결함주입:** 4/4 검출.
 
-## 6. 결론
+## 6. 블록별 SystemVerilog 단위 테스트벤치 (U1~U9 충족)
+
+기존에는 SV TB가 ALU·control_unit 2개뿐이었고 나머지는 Python 골든모델로만 검증됐다. `Verification_Handover.md`의 단위검증계획(U1~U9)을 HDL 레벨에서 충족하도록 **모든 leaf 블록(25개)에 self-checking SV 단위 TB를 추가**했다(통합 top `rv32_core`는 `tb_rv32_core_if_wb.sv`가 담당). 모든 TB는 `tb_alu.sv` 패턴(독립 골든/기대값 + `RESULT: ALL PASS`/`$fatal`)을 따른다.
+
+| 구간 | 단위 테스트벤치 (`ip_workspace/...`) | 방식 |
+|---|---|---|
+| IF | tb_pc_adder, tb_next_pc_mux, tb_program_counter, tb_address_aligner, tb_comparator, tb_tag_array, **tb_cache_controller(FSM)** | 조합 random+golden / 순차 directed / FSM 상태천이 |
+| ID | tb_control_unit, tb_imm_gen, tb_register_file, **tb_csr_file**, tb_hazard_unit | 진리표·random+golden / write-first / 트랩·MRET |
+| EX | tb_alu, **tb_alu_control(64 exhaustive)**, tb_bcu, tb_forwarding_unit, tb_trap_unit | exhaustive / random+golden / 우선순위·cause |
+| MEM | tb_read_aligner, tb_write_strobe_gen, tb_dtag_array, tb_ddata_array, **tb_dcache_controller(FSM)**, **tb_axi_master(FSM)** | random+golden / 순차 / write-back·burst 핸드셰이크 |
+| WB | tb_result_mux | random+golden |
+| 공용 | tb_pipeline_reg | latch/stall/flush/reset |
+
+- 조합 블록: directed + 수천~수만 랜덤 벡터를 TB 내장 독립 골든과 대조. alu_control은 64조합 전수.
+- 순차/FSM 블록(cache_controller, dcache_controller, axi_master, dtag/ddata array, register_file, csr_file, tag_array, program_counter, pipeline_reg): 클럭 단위 directed 시퀀스로 상태천이·캡처타이밍·핸드셰이크(RLAST/BVALID/WLAST)·write-first·트랩/MRET를 검사 — Python 모델이 못 잡는 엘라보레이션/타이밍 영역.
+- 실행은 각 `.vhd` + 해당 `tb_*.sv`를 xsim/Questa 혼합언어로 컴파일·구동(예: `xvhdl <dut>.vhd; xvlog -sv tb_<dut>.sv; xelab tb_<dut> -R`). 본 환경에는 혼합언어 시뮬레이터가 없어 구조/구문 정합만 확인했고, 실제 PASS는 Vivado xsim/Questa 실행으로 확정한다.
+
+### 6.1 3-포인트 경계값분석 (BVA) — 전 TB 적용
+
+모든 TB(25개 단위 + 통합 + 기존 alu/control_unit)에 **3-포인트 경계값분석**(경계−1 / 경계 / 경계+1)을 추가했다. 각 블록의 실제 경계에 맞춤:
+
+| 블록 | BVA 경계(3-포인트) |
+|---|---|
+| pc_adder | +4 wrap @0xFFFFFFFC (wrap−1/wrap/wrap+1), min/max |
+| next_pc_mux | sel{0,1} × 데이터 min/sign(0x7FFFFFFF·0x80000000)/max |
+| address_aligner | offset 0xF→0x10, idx 0xFF→0x100 carry 경계 |
+| comparator | tag 일치 @V (V−1/V/V+1), tag min/max, valid 경계 |
+| program_counter | next_pc min/sign/max, stall 0↔1 전이 |
+| tag_array / dtag_array | index 0/1/254/255 (min·max·인접) |
+| imm_gen / 통합 | 12-bit 부호 즉치 +2046/+2047/−2048 |
+| alu / alu_control | ADD wrap, shamt 30/31/32(마스킹), funct7[5] 0/1, SLT/SLTU 부호 경계 |
+| bcu | 비교 등가 인접(a=b−1/b/b+1), 0x7FFFFFFF↔0x80000000 부호/무부호 발산 |
+| forwarding_unit / hazard_unit | rd 레지스터번호 x0/x1/x31 (게이팅 경계) |
+| trap_unit | cause 우선순위 인접쌍(misalign>illegal>ebreak>load>store>ecall) |
+| read_aligner | 바이트 부호 0x7F/0x80, 하프 0x7FFF/0x8000, byte_off 0/3 |
+| write_strobe_gen / ddata_array | byte_off 0/3, wstrb 0x0/0xF, 데이터 min/max |
+| cache_controller / dcache_controller | 핸드셰이크(arready/rvalid/axi_done) before/at 경계 캡처 타이밍 |
+| axi_master | 버스트 beat 카운트 first(0)/last(3, RLAST/WLAST) 경계 |
+| result_mux | result_src 00/01/10/11(default), csr_to_reg 경계 |
+| pipeline_reg | 데이터 min/max, flush>stall 우선순위 경계 |
+| register_file / csr_file | reg-num x0/x1/x30/x31, 쓰기데이터 min/max·set/clear 마스크 경계 |
+
+통합 BVA 3종(즉치 ±경계, LB/LBU 부호 경계, SLLI shamt 30/31)은 사이클정확 모델·ISS로 사전 검산해 기대값을 확정했다(x1=0x7FE, x2=0x7FF, x3=0xFFFFF800 / LB=0xFFFFFF80, LBU=0x80 / 0x40000000, 0x80000000).
+
+### 6.2 순차 논리 타이밍 이슈 테스트 — 전 순차/FSM TB 적용
+
+기능 시뮬레이션 레벨에서 의미 있는 클럭 타이밍 결함을 잡도록, 모든 순차/FSM TB에 `// timing-issue tests` 블록을 추가했다(게이트레벨 setup/hold·skew는 STA/Vivado 영역으로 범위 밖).
+
+| 순차 블록 | 추가한 타이밍 케이스 |
+|---|---|
+| program_counter | 비동기 reset이 stall을 지배, 3-사이클 stall hold(내부 next_pc 변동 무시), release 시 최신값 latch |
+| pipeline_reg | 멀티사이클 stall hold, 비동기 reset이 stall+flush 동시 지배 |
+| tag_array / dtag_array | 동기 write 지연(엣지 전 read는 OLD), 비동기 reset 즉시 valid/dirty 클리어, we_tag>we_dirty 엣지 우선순위 |
+| register_file | write-first 바이패스 동일사이클 가시성, 엣지 후 커밋, 동일 레지스터 연속 write 마지막 우선 |
+| csr_file | 동일 엣지에서 trap_we>is_mret>csr_we 우선순위, 비동기 reset CSR 클리어 |
+| ddata_array | 동기 store 지연(엣지 전 OLD), line_fill>we 엣지 우선순위 |
+| cache_controller | **캡처 타이밍: `we`는 RVALID beat에 정확히 1, 그 외 0** (BUG-001 회귀), 긴 AR/R 지연 동안 무오류, wake_up 1-사이클 펄스, 비동기 reset 중 FSM→IDLE |
+| dcache_controller | axi_done 1회에 정확히 1상태 전이, wake_up 1-사이클 펄스, 비동기 reset 중 FSM→IDLE |
+| axi_master | ready 지연(stretch) 시 대기, beat는 핸드셰이크에서만 증가, done 1-사이클 펄스, 비동기 reset 중 버스트→IDLE |
+| 통합(rv32_core) | 연속 load-use 해저드(각 1버블+MEM/WB 포워딩), 분기 EX 해소 정확히 2버블 flush(2슬롯 squash) |
+
+핵심 회귀 보호: cache_controller의 `we=rvalid` 캡처 타이밍 테스트는 과거 BUG-001(RVALID 다음 사이클에 stale 버스 데이터를 latch)을 직접 겨냥한다. 통합 타이밍 2종은 사이클정확 모델·ISS로 기대값을 사전 검산했다(load-use: x3=0x12,x5=0x13 / branch 2-bubble: x7=7,x8=0,x9=0).
+
+## 7. 결론
 
 IF~WB 레지스터 기록 경로 통합이 명세(`RV32_Pipeline_Spec.md`)와 정합하며, 포워딩·해저드·분기를 포함해 임의 프로그램에서 순차 ISS와 등가임을 30 iteration + 8,000 랜덤 counter-example + 4종 결함주입으로 확인했다. 발견된 실제 RTL 버그(ADDI/funct7 게이팅) 1건을 수정·재검증했다. 최종 게이트 사인오프는 동봉 SV TB를 xsim/Questa로 1회 실행하여 마무리할 것을 권고한다.
