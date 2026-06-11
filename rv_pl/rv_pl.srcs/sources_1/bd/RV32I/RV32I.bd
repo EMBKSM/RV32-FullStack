@@ -1,7 +1,7 @@
 {
   "design": {
     "design_info": {
-      "boundary_crc": "0x3FDB52A93FDB52A9",
+      "boundary_crc": "0x0",
       "device": "xc7z020clg400-1",
       "gen_directory": "../../../../rv_pl.gen/sources_1/bd/RV32I",
       "name": "RV32I",
@@ -10,28 +10,55 @@
       "tool_version": "2025.2"
     },
     "design_tree": {
-      "orgate2_0": "",
+      "orgate2_redirect": "",
       "pc_reg_0": "",
       "pc_adder_0": "",
       "next_pc_mux_0": "",
-      "mux2_32_0": "",
-      "orgate2_1": "",
-      "ifid_reg_0": ""
-    },
-    "ports": {
-      "imem_addr": {
-        "direction": "O",
-        "left": "31",
-        "right": "0"
-      }
+      "mux2_redirect": "",
+      "orgate2_corestall": "",
+      "ifid_reg_0": "",
+      "orgate2_bubble": "",
+      "control_unit_0": "",
+      "imm_gen_0": "",
+      "register_file_0": "",
+      "hazard_unit_0": "",
+      "id_decode_glue_0": "",
+      "mux2_csrwdata": "",
+      "idex_reg_0": "",
+      "icache_unit_0": "",
+      "cache_unit_0": "",
+      "forwarding_unit_0": "",
+      "mux3_fa": "",
+      "mux3_fb": "",
+      "mux2_alua": "",
+      "mux2_alub": "",
+      "alu_control_0": "",
+      "alu_0": "",
+      "bcu_0": "",
+      "csr_file_0": "",
+      "trap_unit_0": "",
+      "andn2_csrwe": "",
+      "andn2_mret": "",
+      "andn2_trapwe": "",
+      "andn2_traptaken": "",
+      "fencei_oneshot_0": "",
+      "exmem_reg_0": "",
+      "read_aligner_0": "",
+      "write_strobe_gen_0": "",
+      "xlslice_0": "",
+      "memwb_reg_0": "",
+      "result_mux_0": "",
+      "const0_1b": "",
+      "const0_32b": "",
+      "xlslice_byteoff": ""
     },
     "components": {
-      "orgate2_0": {
+      "orgate2_redirect": {
         "vlnv": "user:rv32:orgate2:1.0",
         "ip_revision": "1",
         "xci_name": "RV32I_orgate2_0_0",
         "xci_path": "ip\\RV32I_orgate2_0_0\\RV32I_orgate2_0_0.xci",
-        "inst_hier_path": "orgate2_0",
+        "inst_hier_path": "orgate2_redirect",
         "has_run_ip_tcl": "true"
       },
       "pc_reg_0": {
@@ -58,20 +85,20 @@
         "inst_hier_path": "next_pc_mux_0",
         "has_run_ip_tcl": "true"
       },
-      "mux2_32_0": {
+      "mux2_redirect": {
         "vlnv": "user:rv32:mux2_32:1.0",
         "ip_revision": "1",
         "xci_name": "RV32I_mux2_32_0_0",
         "xci_path": "ip\\RV32I_mux2_32_0_0\\RV32I_mux2_32_0_0.xci",
-        "inst_hier_path": "mux2_32_0",
+        "inst_hier_path": "mux2_redirect",
         "has_run_ip_tcl": "true"
       },
-      "orgate2_1": {
+      "orgate2_corestall": {
         "vlnv": "user:rv32:orgate2:1.0",
         "ip_revision": "1",
         "xci_name": "RV32I_orgate2_1_0",
         "xci_path": "ip\\RV32I_orgate2_1_0\\RV32I_orgate2_1_0.xci",
-        "inst_hier_path": "orgate2_1",
+        "inst_hier_path": "orgate2_corestall",
         "has_run_ip_tcl": "true"
       },
       "ifid_reg_0": {
@@ -81,13 +108,388 @@
         "xci_path": "ip\\RV32I_ifid_reg_0_0\\RV32I_ifid_reg_0_0.xci",
         "inst_hier_path": "ifid_reg_0",
         "has_run_ip_tcl": "true"
+      },
+      "orgate2_bubble": {
+        "vlnv": "user:rv32:orgate2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_orgate2_0_1",
+        "xci_path": "ip\\RV32I_orgate2_0_1\\RV32I_orgate2_0_1.xci",
+        "inst_hier_path": "orgate2_bubble",
+        "has_run_ip_tcl": "true"
+      },
+      "control_unit_0": {
+        "vlnv": "user:rv32:control_unit:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_control_unit_0_0",
+        "xci_path": "ip\\RV32I_control_unit_0_0\\RV32I_control_unit_0_0.xci",
+        "inst_hier_path": "control_unit_0",
+        "has_run_ip_tcl": "true"
+      },
+      "imm_gen_0": {
+        "vlnv": "user:rv32:imm_gen:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_imm_gen_0_0",
+        "xci_path": "ip\\RV32I_imm_gen_0_0\\RV32I_imm_gen_0_0.xci",
+        "inst_hier_path": "imm_gen_0",
+        "has_run_ip_tcl": "true"
+      },
+      "register_file_0": {
+        "vlnv": "user:rv32:register_file:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_register_file_0_0",
+        "xci_path": "ip\\RV32I_register_file_0_0\\RV32I_register_file_0_0.xci",
+        "inst_hier_path": "register_file_0",
+        "has_run_ip_tcl": "true"
+      },
+      "hazard_unit_0": {
+        "vlnv": "user:rv32:hazard_unit:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_hazard_unit_0_0",
+        "xci_path": "ip\\RV32I_hazard_unit_0_0\\RV32I_hazard_unit_0_0.xci",
+        "inst_hier_path": "hazard_unit_0",
+        "has_run_ip_tcl": "true"
+      },
+      "id_decode_glue_0": {
+        "vlnv": "user:rv32:id_decode_glue:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_id_decode_glue_0_0",
+        "xci_path": "ip\\RV32I_id_decode_glue_0_0\\RV32I_id_decode_glue_0_0.xci",
+        "inst_hier_path": "id_decode_glue_0",
+        "has_run_ip_tcl": "true"
+      },
+      "mux2_csrwdata": {
+        "vlnv": "user:rv32:mux2_32:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_mux2_32_0_1",
+        "xci_path": "ip\\RV32I_mux2_32_0_1\\RV32I_mux2_32_0_1.xci",
+        "inst_hier_path": "mux2_csrwdata",
+        "has_run_ip_tcl": "true"
+      },
+      "idex_reg_0": {
+        "vlnv": "user:rv32:idex_reg:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_idex_reg_0_0",
+        "xci_path": "ip\\RV32I_idex_reg_0_0\\RV32I_idex_reg_0_0.xci",
+        "inst_hier_path": "idex_reg_0",
+        "has_run_ip_tcl": "true"
+      },
+      "icache_unit_0": {
+        "vlnv": "user:rv32:icache_unit:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_icache_unit_0_0",
+        "xci_path": "ip\\RV32I_icache_unit_0_0\\RV32I_icache_unit_0_0.xci",
+        "inst_hier_path": "icache_unit_0",
+        "has_run_ip_tcl": "true",
+        "interface_ports": {
+          "interface_aximm": {
+            "bd_attributes": {
+              "TYPE": {
+                "value": "END_POINT",
+                "value_src": "auto"
+              }
+            },
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Master",
+            "address_space_ref": "interface_aximm",
+            "base_address": {
+              "minimum": "0x00000000",
+              "maximum": "0xFFFFFFFF",
+              "width": "32"
+            }
+          }
+        },
+        "addressing": {
+          "address_spaces": {
+            "interface_aximm": {
+              "range": "4G",
+              "width": "32"
+            }
+          }
+        }
+      },
+      "cache_unit_0": {
+        "vlnv": "user:rv32:cache_unit:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_cache_unit_0_0",
+        "xci_path": "ip\\RV32I_cache_unit_0_0\\RV32I_cache_unit_0_0.xci",
+        "inst_hier_path": "cache_unit_0",
+        "has_run_ip_tcl": "true",
+        "interface_ports": {
+          "interface_aximm": {
+            "bd_attributes": {
+              "TYPE": {
+                "value": "END_POINT",
+                "value_src": "auto"
+              }
+            },
+            "vlnv": "xilinx.com:interface:aximm_rtl:1.0",
+            "mode": "Master",
+            "address_space_ref": "interface_aximm",
+            "base_address": {
+              "minimum": "0x00000000",
+              "maximum": "0xFFFFFFFF",
+              "width": "32"
+            }
+          }
+        },
+        "addressing": {
+          "address_spaces": {
+            "interface_aximm": {
+              "range": "4G",
+              "width": "32"
+            }
+          }
+        }
+      },
+      "forwarding_unit_0": {
+        "vlnv": "user:rv32:forwarding_unit:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_forwarding_unit_0_0",
+        "xci_path": "ip\\RV32I_forwarding_unit_0_0\\RV32I_forwarding_unit_0_0.xci",
+        "inst_hier_path": "forwarding_unit_0",
+        "has_run_ip_tcl": "true"
+      },
+      "mux3_fa": {
+        "vlnv": "user:rv32:mux3_32:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_mux3_32_0_0",
+        "xci_path": "ip\\RV32I_mux3_32_0_0\\RV32I_mux3_32_0_0.xci",
+        "inst_hier_path": "mux3_fa",
+        "has_run_ip_tcl": "true"
+      },
+      "mux3_fb": {
+        "vlnv": "user:rv32:mux3_32:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_mux3_32_0_1",
+        "xci_path": "ip\\RV32I_mux3_32_0_1\\RV32I_mux3_32_0_1.xci",
+        "inst_hier_path": "mux3_fb",
+        "has_run_ip_tcl": "true"
+      },
+      "mux2_alua": {
+        "vlnv": "user:rv32:mux2_32:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_mux2_32_0_2",
+        "xci_path": "ip\\RV32I_mux2_32_0_2\\RV32I_mux2_32_0_2.xci",
+        "inst_hier_path": "mux2_alua",
+        "has_run_ip_tcl": "true"
+      },
+      "mux2_alub": {
+        "vlnv": "user:rv32:mux2_32:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_mux2_32_0_3",
+        "xci_path": "ip\\RV32I_mux2_32_0_3\\RV32I_mux2_32_0_3.xci",
+        "inst_hier_path": "mux2_alub",
+        "has_run_ip_tcl": "true"
+      },
+      "alu_control_0": {
+        "vlnv": "user:rv32:alu_control:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_alu_control_0_0",
+        "xci_path": "ip\\RV32I_alu_control_0_0\\RV32I_alu_control_0_0.xci",
+        "inst_hier_path": "alu_control_0",
+        "has_run_ip_tcl": "true"
+      },
+      "alu_0": {
+        "vlnv": "user:rv32:alu:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_alu_0_0",
+        "xci_path": "ip\\RV32I_alu_0_0\\RV32I_alu_0_0.xci",
+        "inst_hier_path": "alu_0",
+        "has_run_ip_tcl": "true"
+      },
+      "bcu_0": {
+        "vlnv": "user:rv32:bcu:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_bcu_0_0",
+        "xci_path": "ip\\RV32I_bcu_0_0\\RV32I_bcu_0_0.xci",
+        "inst_hier_path": "bcu_0",
+        "has_run_ip_tcl": "true"
+      },
+      "csr_file_0": {
+        "vlnv": "user:rv32:csr_file:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_csr_file_0_0",
+        "xci_path": "ip\\RV32I_csr_file_0_0\\RV32I_csr_file_0_0.xci",
+        "inst_hier_path": "csr_file_0",
+        "has_run_ip_tcl": "true"
+      },
+      "trap_unit_0": {
+        "vlnv": "user:rv32:trap_unit:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_trap_unit_0_0",
+        "xci_path": "ip\\RV32I_trap_unit_0_0\\RV32I_trap_unit_0_0.xci",
+        "inst_hier_path": "trap_unit_0",
+        "has_run_ip_tcl": "true"
+      },
+      "andn2_csrwe": {
+        "vlnv": "user:rv32:andn2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_andn2_0_0",
+        "xci_path": "ip\\RV32I_andn2_0_0\\RV32I_andn2_0_0.xci",
+        "inst_hier_path": "andn2_csrwe",
+        "has_run_ip_tcl": "true"
+      },
+      "andn2_mret": {
+        "vlnv": "user:rv32:andn2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_andn2_0_1",
+        "xci_path": "ip\\RV32I_andn2_0_1\\RV32I_andn2_0_1.xci",
+        "inst_hier_path": "andn2_mret",
+        "has_run_ip_tcl": "true"
+      },
+      "andn2_trapwe": {
+        "vlnv": "user:rv32:andn2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_andn2_0_2",
+        "xci_path": "ip\\RV32I_andn2_0_2\\RV32I_andn2_0_2.xci",
+        "inst_hier_path": "andn2_trapwe",
+        "has_run_ip_tcl": "true"
+      },
+      "andn2_traptaken": {
+        "vlnv": "user:rv32:andn2:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_andn2_0_3",
+        "xci_path": "ip\\RV32I_andn2_0_3\\RV32I_andn2_0_3.xci",
+        "inst_hier_path": "andn2_traptaken",
+        "has_run_ip_tcl": "true"
+      },
+      "fencei_oneshot_0": {
+        "vlnv": "user:rv32:fencei_oneshot:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_fencei_oneshot_0_0",
+        "xci_path": "ip\\RV32I_fencei_oneshot_0_0\\RV32I_fencei_oneshot_0_0.xci",
+        "inst_hier_path": "fencei_oneshot_0",
+        "has_run_ip_tcl": "true"
+      },
+      "exmem_reg_0": {
+        "vlnv": "user:rv32:exmem_reg:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_exmem_reg_0_0",
+        "xci_path": "ip\\RV32I_exmem_reg_0_0\\RV32I_exmem_reg_0_0.xci",
+        "inst_hier_path": "exmem_reg_0",
+        "has_run_ip_tcl": "true"
+      },
+      "read_aligner_0": {
+        "vlnv": "user:rv32:read_aligner:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_read_aligner_0_0",
+        "xci_path": "ip\\RV32I_read_aligner_0_0\\RV32I_read_aligner_0_0.xci",
+        "inst_hier_path": "read_aligner_0",
+        "has_run_ip_tcl": "true"
+      },
+      "write_strobe_gen_0": {
+        "vlnv": "user:rv32:write_strobe_gen:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_write_strobe_gen_0_0",
+        "xci_path": "ip\\RV32I_write_strobe_gen_0_0\\RV32I_write_strobe_gen_0_0.xci",
+        "inst_hier_path": "write_strobe_gen_0",
+        "has_run_ip_tcl": "true"
+      },
+      "xlslice_0": {
+        "vlnv": "xilinx.com:ip:xlslice:1.0",
+        "ip_revision": "5",
+        "xci_name": "RV32I_xlslice_0_0",
+        "xci_path": "ip\\RV32I_xlslice_0_0\\RV32I_xlslice_0_0.xci",
+        "inst_hier_path": "xlslice_0",
+        "has_run_ip_tcl": "true"
+      },
+      "memwb_reg_0": {
+        "vlnv": "user:rv32:memwb_reg:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_memwb_reg_0_0",
+        "xci_path": "ip\\RV32I_memwb_reg_0_0\\RV32I_memwb_reg_0_0.xci",
+        "inst_hier_path": "memwb_reg_0",
+        "has_run_ip_tcl": "true"
+      },
+      "result_mux_0": {
+        "vlnv": "user:rv32:result_mux:1.0",
+        "ip_revision": "1",
+        "xci_name": "RV32I_result_mux_0_0",
+        "xci_path": "ip\\RV32I_result_mux_0_0\\RV32I_result_mux_0_0.xci",
+        "inst_hier_path": "result_mux_0",
+        "has_run_ip_tcl": "true"
+      },
+      "const0_1b": {
+        "vlnv": "xilinx.com:ip:xlconstant:1.1",
+        "ip_revision": "10",
+        "xci_name": "RV32I_xlconstant_0_0",
+        "xci_path": "ip\\RV32I_xlconstant_0_0\\RV32I_xlconstant_0_0.xci",
+        "inst_hier_path": "const0_1b",
+        "has_run_ip_tcl": "true",
+        "parameters": {
+          "CONST_VAL": {
+            "value": "0"
+          }
+        }
+      },
+      "const0_32b": {
+        "vlnv": "xilinx.com:ip:xlconstant:1.1",
+        "ip_revision": "10",
+        "xci_name": "RV32I_xlconstant_1_0",
+        "xci_path": "ip\\RV32I_xlconstant_1_0\\RV32I_xlconstant_1_0.xci",
+        "inst_hier_path": "const0_32b",
+        "has_run_ip_tcl": "true",
+        "parameters": {
+          "CONST_VAL": {
+            "value": "0"
+          },
+          "CONST_WIDTH": {
+            "value": "32"
+          }
+        }
+      },
+      "xlslice_byteoff": {
+        "vlnv": "xilinx.com:ip:xlslice:1.0",
+        "ip_revision": "5",
+        "xci_name": "RV32I_xlslice_1_0",
+        "xci_path": "ip\\RV32I_xlslice_1_0\\RV32I_xlslice_1_0.xci",
+        "inst_hier_path": "xlslice_byteoff",
+        "has_run_ip_tcl": "true"
       }
     },
     "nets": {
+      "cache_unit_0_rword": {
+        "ports": [
+          "cache_unit_0/rword",
+          "read_aligner_0/word_data"
+        ]
+      },
+      "exmem_reg_0_exmem_alu_result": {
+        "ports": [
+          "exmem_reg_0/exmem_alu_result",
+          "cache_unit_0/addr"
+        ]
+      },
+      "icache_unit_0_rword": {
+        "ports": [
+          "icache_unit_0/rword",
+          "ifid_reg_0/instr_in"
+        ]
+      },
+      "mux2_redirect_y": {
+        "ports": [
+          "mux2_redirect/y",
+          "next_pc_mux_0/target_addr"
+        ]
+      },
       "next_pc_mux_0_next_pc": {
         "ports": [
           "next_pc_mux_0/next_pc",
           "pc_reg_0/next_pc"
+        ]
+      },
+      "orgate2_corestall_y": {
+        "ports": [
+          "orgate2_corestall/y",
+          "pc_reg_0/stall"
+        ]
+      },
+      "orgate2_redirect_y": {
+        "ports": [
+          "orgate2_redirect/y",
+          "next_pc_mux_0/pc_src",
+          "ifid_reg_0/flush",
+          "orgate2_bubble/a"
         ]
       },
       "pc_adder_0_pc_out": {
@@ -100,9 +502,9 @@
       "pc_reg_0_pc": {
         "ports": [
           "pc_reg_0/pc",
-          "imem_addr",
           "pc_adder_0/pc_in",
-          "ifid_reg_0/pc_in"
+          "ifid_reg_0/pc_in",
+          "icache_unit_0/addr"
         ]
       }
     }

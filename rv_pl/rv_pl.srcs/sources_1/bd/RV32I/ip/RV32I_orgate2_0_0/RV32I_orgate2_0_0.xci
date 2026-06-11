@@ -2,7 +2,7 @@
   "schema": "xilinx.com:schema:json_instance:1.0",
   "ip_inst": {
     "xci_name": "RV32I_orgate2_0_0",
-    "cell_name": "orgate2_0",
+    "cell_name": "orgate2_redirect",
     "component_reference": "user:rv32:orgate2:1.0",
     "ip_revision": "1",
     "gen_directory": "../../../../../../rv_pl.gen/sources_1/bd/RV32I/ip/RV32I_orgate2_0_0",
@@ -42,5 +42,5 @@
       }
     }
   },
-  "checksum": "0754b197"
+  "checksum": "afd87f7b"
 }

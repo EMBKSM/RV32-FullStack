@@ -2,7 +2,7 @@
   "schema": "xilinx.com:schema:json_instance:1.0",
   "ip_inst": {
     "xci_name": "RV32I_mux2_32_0_0",
-    "cell_name": "mux2_32_0",
+    "cell_name": "mux2_redirect",
     "component_reference": "user:rv32:mux2_32:1.0",
     "ip_revision": "1",
     "gen_directory": "../../../../../../rv_pl.gen/sources_1/bd/RV32I/ip/RV32I_mux2_32_0_0",
@@ -43,5 +43,5 @@
       }
     }
   },
-  "checksum": "769fc35a"
+  "checksum": "f03a3715"
 }

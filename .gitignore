@@ -10,8 +10,15 @@ Thumbs.db
 *.bak
 *.swp
 
+# ---- Vivado project dirs (regenerable from scripts/) ----
+rv_pl/
+vivado_zynq/
+ip_build/
+
 # ---- Xilinx Vivado / FPGA build outputs ----
 .Xil/
+*.wdb
+*.pb
 *.jou
 *.log
 *.str
