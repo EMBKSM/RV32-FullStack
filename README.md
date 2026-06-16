@@ -126,6 +126,30 @@ rv32> run
 명령: `<asm>`(추가) `run` `step` `reg` `mem <a>` `list` `clear` `asm <i>` `quit`.
 지원 명령어/예제(루프·LED)는 `host_app/README.md`.
 
+### 6.3 Pmod 주변장치 구동 예제 — SPI (JA)
+모든 Pmod 헤더(JA~JE, 40핀)가 MMIO 주변장치로 매핑돼 있어, 어셈블리에서 `sw`/`lw`로
+직접 제어한다(`0x1000_0000` 윈도우, PS 펌웨어/GUI 수정 불필요).
+아래는 **SPI0(JA)로 1바이트(0x55) 전송**. JA의 **2번(MOSI)↔3번(MISO)** 핀을 점프선으로
+묶으면 루프백되어 수신값이 송신값과 같아진다(`x4 = 0x55`). GUI Assembly 패널에 붙여넣거나
+콘솔에 한 줄씩 입력한 뒤 `Run`/`run`.
+
+```asm
+    li    x1, 0x10000040    # SPI0 base (JA)
+    li    x2, 24
+    sw    x2, 8(x1)         # DIV  -> ~1 MHz SCLK
+    sw    x0, 0(x1)         # CTRL -> mode 0, auto-SS
+    li    x2, 0x55
+    sw    x2, 12(x1)        # TX = 0x55  -> 전송 시작
+wait:
+    lw    x3, 4(x1)         # STATUS
+    andi  x3, x3, 1         # busy 비트
+    bnez  x3, wait          # 전송 끝까지 대기
+    lw    x4, 16(x1)        # RX  (점프선 루프백 시 0x55)
+```
+실행 결과 Registers 패널에 `x4 = 0x00000055`(노란색 강조). 점프선 없이 실제 Pmod SPI
+모듈을 꽂으면 같은 패턴으로 그 장치와 통신한다.
+나머지 주변장치(I2C/UART/PWM/GPIO)의 레지스터맵·핀맵·예제는 **`PMOD_PERIPHERALS_DESIGN.md`** 참조.
+
 ---
 
 ## 7. 인터페이스 레퍼런스
@@ -151,6 +175,14 @@ rv32> run
 |MMIO LED (W)|0x1000_0000|하위 4비트 → 보드 LED|
 |MMIO SW (R)|0x1000_0004|스위치 4|
 |MMIO BTN (R)|0x1000_0008|버튼 4|
+|MMIO GPIO|0x1000_0020|DIR/OUT/IN — Pmod 잔여 22핀|
+|MMIO SPI0 / SPI1|0x1000_0040 / 0x60|CTRL/STAT/DIV/TX/RX — JA / JB|
+|MMIO I2C0 / I2C1|0x1000_0080 / 0xA0|CMD/STAT/DIV/TX/RX — JC / JD|
+|MMIO UART|0x1000_00C0|DIV/STAT/TX/RX — JE|
+|MMIO PWM|0x1000_00E0|CTRL/PERIOD/DUTY0..3 — JE|
+
+> Pmod 주변장치(JA~JE) 블록은 `addr[7:5]`=장치, `addr[4:2]`=레지스터로 디코드된다.
+> 전체 비트 정의·핀맵·예제 어셈블리는 **`PMOD_PERIPHERALS_DESIGN.md`** 참조.
 
 ### 7.3 UART 프로토콜 (PS 모니터, 한 줄=한 명령, HEX)
 `r`(reset) `i A D`(imem) `d A D`(dmem) `g`(run) `s`(step) `x N`(reg) `m A`(dmem rd)
@@ -173,4 +205,6 @@ rv32> run
 
 ## 9. 현황
 RV32I+Zicsr+트랩+FENCE.I CPU, I$/D$/AXI, 전 블록 IP, Zynq SoC 비트스트림(Zybo Z7-20),
-PS 펌웨어, PC 콘솔까지 완성·검증. 세부 검증 내역은 `docs/VERIFICATION.md`.
+PS 펌웨어, PC 콘솔/GUI까지 완성·검증. **Pmod 헤더 JA~JE(40핀)를 MMIO 주변장치
+(2×SPI·2×I2C·UART·PWM·GPIO)로 노출** — 어셈블리에서 직접 제어(§6.3, `PMOD_PERIPHERALS_DESIGN.md`).
+세부 검증 내역은 `docs/VERIFICATION.md`.
