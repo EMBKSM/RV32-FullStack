@@ -38,3 +38,16 @@ vivado_pid*.str
 *.elf
 *.bin
 *.map
+
+# ---- Vitis PS workspace + generated PS init (regenerable) ----
+rv_ps/
+flash/ws/
+flash/ps7_init*
+flash/*_log.txt
+flash/*_out.txt
+
+# ---- scratch launchers / status dumps ----
+dfx_runtime.txt
+_*.bat
+_*.txt
+run_*.bat
