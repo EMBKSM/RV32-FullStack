@@ -34,7 +34,13 @@ entity rv32_platform is
         -- board GPIO
         led_o : out std_logic_vector(LED_W-1 downto 0);
         sw_i  : in  std_logic_vector(SW_W-1 downto 0);
-        btn_i : in  std_logic_vector(BTN_W-1 downto 0)
+        btn_i : in  std_logic_vector(BTN_W-1 downto 0);
+        -- Pmod headers JA..JE (bidirectional; tri-state pads inferred here)
+        ja_io : inout std_logic_vector(7 downto 0);
+        jb_io : inout std_logic_vector(7 downto 0);
+        jc_io : inout std_logic_vector(7 downto 0);
+        jd_io : inout std_logic_vector(7 downto 0);
+        je_io : inout std_logic_vector(7 downto 0)
     );
 end rv32_platform;
 
@@ -76,7 +82,21 @@ architecture Behavioral of rv32_platform is
 
     -- step/run control
     signal host_hold, stepping : std_logic := '0';
+
+    -- LED register tap (mmio drives it; fed to both the board and the ctrl slave)
+    signal led_int : std_logic_vector(LED_W-1 downto 0);
+
+    -- Pmod peripheral nets (mmio_bridge <-> tri-state pads at this top level)
+    constant GPIO_W : integer := 22;
+    signal gpio_o, gpio_t, gpio_i : std_logic_vector(GPIO_W-1 downto 0);
+    signal spi0_sclk, spi0_mosi, spi0_ss_n, spi0_miso : std_logic;
+    signal spi1_sclk, spi1_mosi, spi1_ss_n, spi1_miso : std_logic;
+    signal i2c0_scl_in, i2c0_scl_oe, i2c0_sda_in, i2c0_sda_oe : std_logic;
+    signal i2c1_scl_in, i2c1_scl_oe, i2c1_sda_in, i2c1_sda_oe : std_logic;
+    signal uart_tx, uart_rx : std_logic;
+    signal pwm_o : std_logic_vector(3 downto 0);
 begin
+    led_o <= led_int;
     clk      <= S_AXI_ACLK;
     rst      <= not S_AXI_ARESETN;
     core_rst <= rst or cpu_reset;                 -- PS can hold/invalidate the CPU+caches
@@ -100,7 +120,8 @@ begin
             dbg_reg_addr=>c_dbg_reg_addr, dbg_reg_data=>c_dbg_reg_data,
             dmem_raddr=>dump_raddr, dmem_rdata=>dump_rdata,
             pc_in=>imem_addr, dbg_rd=>dbg_rd, dbg_wdata=>dbg_wdata, dbg_commit=>dbg_commit,
-            halted=>halted);
+            halted=>halted,
+            led_in=>led_int, sw_in=>sw_i, btn_in=>btn_i);
 
     -- ===================== CPU core =====================
     u_core : entity work.rv32_core
@@ -115,13 +136,21 @@ begin
 
     -- ===================== MMIO bridge (data bus) =====================
     u_mmio : entity work.mmio_bridge
-        generic map (LED_W=>LED_W, SW_W=>SW_W, BTN_W=>BTN_W)
+        generic map (LED_W=>LED_W, SW_W=>SW_W, BTN_W=>BTN_W, GPIO_W=>GPIO_W)
         port map (clk=>clk, reset=>rst,
                   c_addr=>dmem_addr, c_wdata=>dmem_wdata, c_wstrb=>dmem_wstrb,
                   c_we=>dmem_we, c_re=>dmem_re, c_rdata=>dmem_rdata, c_stall=>c_stall,
                   d_addr=>bd_addr, d_wdata=>bd_wdata, d_wstrb=>bd_wstrb,
                   d_we=>bd_we, d_re=>bd_re, d_rdata=>bd_rdata, d_stall=>d_stall,
-                  led_o=>led_o, sw_i=>sw_i, btn_i=>btn_i);
+                  led_o=>led_int, sw_i=>sw_i, btn_i=>btn_i,
+                  gpio_i=>gpio_i, gpio_o=>gpio_o, gpio_t=>gpio_t,
+                  spi0_sclk=>spi0_sclk, spi0_mosi=>spi0_mosi, spi0_ss_n=>spi0_ss_n, spi0_miso=>spi0_miso,
+                  spi1_sclk=>spi1_sclk, spi1_mosi=>spi1_mosi, spi1_ss_n=>spi1_ss_n, spi1_miso=>spi1_miso,
+                  i2c0_scl_in=>i2c0_scl_in, i2c0_sda_in=>i2c0_sda_in,
+                  i2c0_scl_oe=>i2c0_scl_oe, i2c0_sda_oe=>i2c0_sda_oe,
+                  i2c1_scl_in=>i2c1_scl_in, i2c1_sda_in=>i2c1_sda_in,
+                  i2c1_scl_oe=>i2c1_scl_oe, i2c1_sda_oe=>i2c1_sda_oe,
+                  uart_tx=>uart_tx, uart_rx=>uart_rx, pwm_o=>pwm_o);
 
     -- ===================== I-cache + instruction RAM =====================
     u_icache : entity work.icache_unit
@@ -186,4 +215,58 @@ begin
 
     -- halted = fetching the halt instruction (jal x0,0 = 0x0000006F)
     halted <= '1' when imem_rdata = x"0000006F" else '0';
+
+    -- ===================== Pmod pad mapping (tri-state pads) =====================
+    -- Output pins are driven directly; input pins are only read (IBUF); GPIO and
+    -- I2C pins are tri-stated. Pin index = jX_io(n), n = top row 0..3 / bottom 4..7.
+
+    -- JA -> SPI0 (Pmod Type 2A): 0=SS_n 1=MOSI 2=MISO 3=SCLK ; 4..7 = GPIO[0..3]
+    ja_io(0) <= spi0_ss_n;
+    ja_io(1) <= spi0_mosi;
+    spi0_miso <= ja_io(2);
+    ja_io(3) <= spi0_sclk;
+    ja_io(4) <= gpio_o(0) when gpio_t(0)='0' else 'Z';   gpio_i(0) <= ja_io(4);
+    ja_io(5) <= gpio_o(1) when gpio_t(1)='0' else 'Z';   gpio_i(1) <= ja_io(5);
+    ja_io(6) <= gpio_o(2) when gpio_t(2)='0' else 'Z';   gpio_i(2) <= ja_io(6);
+    ja_io(7) <= gpio_o(3) when gpio_t(3)='0' else 'Z';   gpio_i(3) <= ja_io(7);
+
+    -- JB -> SPI1 : 0=SS_n 1=MOSI 2=MISO 3=SCLK ; 4..7 = GPIO[4..7]
+    jb_io(0) <= spi1_ss_n;
+    jb_io(1) <= spi1_mosi;
+    spi1_miso <= jb_io(2);
+    jb_io(3) <= spi1_sclk;
+    jb_io(4) <= gpio_o(4) when gpio_t(4)='0' else 'Z';   gpio_i(4) <= jb_io(4);
+    jb_io(5) <= gpio_o(5) when gpio_t(5)='0' else 'Z';   gpio_i(5) <= jb_io(5);
+    jb_io(6) <= gpio_o(6) when gpio_t(6)='0' else 'Z';   gpio_i(6) <= jb_io(6);
+    jb_io(7) <= gpio_o(7) when gpio_t(7)='0' else 'Z';   gpio_i(7) <= jb_io(7);
+
+    -- JC -> I2C0 (Pmod Type 6A): 2=SCL 3=SDA (open-drain) ; 0,1,4..7 = GPIO[8..13]
+    jc_io(2) <= '0' when i2c0_scl_oe='1' else 'Z';   i2c0_scl_in <= jc_io(2);
+    jc_io(3) <= '0' when i2c0_sda_oe='1' else 'Z';   i2c0_sda_in <= jc_io(3);
+    jc_io(0) <= gpio_o(8)  when gpio_t(8)='0'  else 'Z';  gpio_i(8)  <= jc_io(0);
+    jc_io(1) <= gpio_o(9)  when gpio_t(9)='0'  else 'Z';  gpio_i(9)  <= jc_io(1);
+    jc_io(4) <= gpio_o(10) when gpio_t(10)='0' else 'Z';  gpio_i(10) <= jc_io(4);
+    jc_io(5) <= gpio_o(11) when gpio_t(11)='0' else 'Z';  gpio_i(11) <= jc_io(5);
+    jc_io(6) <= gpio_o(12) when gpio_t(12)='0' else 'Z';  gpio_i(12) <= jc_io(6);
+    jc_io(7) <= gpio_o(13) when gpio_t(13)='0' else 'Z';  gpio_i(13) <= jc_io(7);
+
+    -- JD -> I2C1 : 2=SCL 3=SDA ; 0,1,4..7 = GPIO[14..19]
+    jd_io(2) <= '0' when i2c1_scl_oe='1' else 'Z';   i2c1_scl_in <= jd_io(2);
+    jd_io(3) <= '0' when i2c1_sda_oe='1' else 'Z';   i2c1_sda_in <= jd_io(3);
+    jd_io(0) <= gpio_o(14) when gpio_t(14)='0' else 'Z';  gpio_i(14) <= jd_io(0);
+    jd_io(1) <= gpio_o(15) when gpio_t(15)='0' else 'Z';  gpio_i(15) <= jd_io(1);
+    jd_io(4) <= gpio_o(16) when gpio_t(16)='0' else 'Z';  gpio_i(16) <= jd_io(4);
+    jd_io(5) <= gpio_o(17) when gpio_t(17)='0' else 'Z';  gpio_i(17) <= jd_io(5);
+    jd_io(6) <= gpio_o(18) when gpio_t(18)='0' else 'Z';  gpio_i(18) <= jd_io(6);
+    jd_io(7) <= gpio_o(19) when gpio_t(19)='0' else 'Z';  gpio_i(19) <= jd_io(7);
+
+    -- JE -> UART (1=TXD out, 2=RXD in) + PWM (4..7) + GPIO[20,21] on je0,je3
+    je_io(1) <= uart_tx;
+    uart_rx  <= je_io(2);
+    je_io(4) <= pwm_o(0);
+    je_io(5) <= pwm_o(1);
+    je_io(6) <= pwm_o(2);
+    je_io(7) <= pwm_o(3);
+    je_io(0) <= gpio_o(20) when gpio_t(20)='0' else 'Z';  gpio_i(20) <= je_io(0);
+    je_io(3) <= gpio_o(21) when gpio_t(21)='0' else 'Z';  gpio_i(21) <= je_io(3);
 end Behavioral;
