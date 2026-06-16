@@ -134,18 +134,21 @@ rv32> run
 콘솔에 한 줄씩 입력한 뒤 `Run`/`run`.
 
 ```asm
-    li    x1, 0x10000040    # SPI0 base (JA)
+    lui   x1, 0x10000      # x1 = 0x1000_0000
+    addi  x1, x1, 0x40     # x1 = 0x1000_0040  (SPI0 base, JA)
     li    x2, 24
-    sw    x2, 8(x1)         # DIV  -> ~1 MHz SCLK
-    sw    x0, 0(x1)         # CTRL -> mode 0, auto-SS
+    sw    x2, 8(x1)        # DIV  -> ~1 MHz SCLK
+    sw    x0, 0(x1)        # CTRL -> mode 0, auto-SS
     li    x2, 0x55
-    sw    x2, 12(x1)        # TX = 0x55  -> 전송 시작
+    sw    x2, 12(x1)       # TX = 0x55  -> 전송 시작
 wait:
-    lw    x3, 4(x1)         # STATUS
-    andi  x3, x3, 1         # busy 비트
-    bnez  x3, wait          # 전송 끝까지 대기
-    lw    x4, 16(x1)        # RX  (점프선 루프백 시 0x55)
+    lw    x3, 4(x1)        # STATUS
+    andi  x3, x3, 1        # busy 비트
+    bne   x3, x0, wait     # busy면 계속 대기
+    lw    x4, 16(x1)       # RX  (점프선 루프백 시 0x55)
 ```
+> 주소가 12비트를 넘으므로 `lui`+`addi`로 만든다(이 어셈블러의 `li`는 작은 값 전용).
+> `bne x3, x0, wait`는 `bnez x3, wait`와 동치.
 실행 결과 Registers 패널에 `x4 = 0x00000055`(노란색 강조). 점프선 없이 실제 Pmod SPI
 모듈을 꽂으면 같은 패턴으로 그 장치와 통신한다.
 나머지 주변장치(I2C/UART/PWM/GPIO)의 레지스터맵·핀맵·예제는 **`PMOD_PERIPHERALS_DESIGN.md`** 참조.

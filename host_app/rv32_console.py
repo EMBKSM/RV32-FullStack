@@ -67,47 +67,87 @@ BR = {'beq':0,'bne':1,'blt':4,'bge':5,'bltu':6,'bgeu':7}
 def split_ops(s): return [x for x in re.split(r'[,\s]+', s.strip()) if x]
 
 def mem_operand(t):                    # "off(rs1)" -> (off, rs1)
-    m = re.fullmatch(r'(-?(?:0x)?[0-9a-fA-F]+)?\((\w+)\)', t.strip())
+    m = re.fullmatch(r'(-?(?:0x[0-9a-fA-F]+|\d+))?\((\w+)\)', t.strip())
     if not m: raise ValueError(f"bad mem operand '{t}'")
     return (imm(m.group(1)) if m.group(1) else 0), reg(m.group(2))
+
+def _ck(v, lo, hi, what):
+    """Range-check an immediate; raise instead of silently truncating."""
+    if not (lo <= v <= hi):
+        raise ValueError(f"{what}: immediate {v} out of range [{lo}..{hi}]")
+    return v
+
+def _cke(v, lo, hi, what):
+    """Range-check a branch/jump byte offset (must be even and within reach)."""
+    if v & 1:
+        raise ValueError(f"{what}: target offset {v} is misaligned (odd)")
+    if not (lo <= v <= hi):
+        raise ValueError(f"{what}: target out of reach ({v} not in [{lo}..{hi}])")
+    return v
 
 def encode(mn, ops, pc, labels):
     mn = mn.lower()
     def tgt(t):                        # branch/jal target: label or numeric offset
         if t in labels: return labels[t] - pc
-        return imm(t)
+        try:
+            return imm(t)
+        except ValueError:
+            raise ValueError(f"unknown label '{t}'")
     if mn in RI: f7,f3 = RI[mn]; return _R(f7,reg(ops[2]),reg(ops[1]),f3,reg(ops[0]),OP_R)
-    if mn in II: return _I(imm(ops[2]),reg(ops[1]),II[mn],reg(ops[0]),OP_I)
-    if mn == 'slli': return _I(imm(ops[2])&0x1F,reg(ops[1]),1,reg(ops[0]),OP_I)
-    if mn == 'srli': return _I(imm(ops[2])&0x1F,reg(ops[1]),5,reg(ops[0]),OP_I)
-    if mn == 'srai': return _I(0x400|(imm(ops[2])&0x1F),reg(ops[1]),5,reg(ops[0]),OP_I)
-    if mn in LD: off,rs1 = mem_operand(ops[1]); return _I(off,rs1,LD[mn],reg(ops[0]),OP_LD)
-    if mn in ST: off,rs1 = mem_operand(ops[1]); return _S(off,reg(ops[0]),rs1,ST[mn],OP_S)
-    if mn in BR: return _B(tgt(ops[2]),reg(ops[1]),reg(ops[0]),BR[mn],OP_B)
-    if mn == 'lui':   return _U(imm(ops[1]),reg(ops[0]),OP_LUI)
-    if mn == 'auipc': return _U(imm(ops[1]),reg(ops[0]),OP_AUIPC)
+    if mn in II: return _I(_ck(imm(ops[2]),-2048,2047,mn),reg(ops[1]),II[mn],reg(ops[0]),OP_I)
+    if mn == 'slli': return _I(_ck(imm(ops[2]),0,31,mn),reg(ops[1]),1,reg(ops[0]),OP_I)
+    if mn == 'srli': return _I(_ck(imm(ops[2]),0,31,mn),reg(ops[1]),5,reg(ops[0]),OP_I)
+    if mn == 'srai': return _I(0x400|_ck(imm(ops[2]),0,31,mn),reg(ops[1]),5,reg(ops[0]),OP_I)
+    if mn in LD: off,rs1 = mem_operand(ops[1]); return _I(_ck(off,-2048,2047,mn),rs1,LD[mn],reg(ops[0]),OP_LD)
+    if mn in ST: off,rs1 = mem_operand(ops[1]); return _S(_ck(off,-2048,2047,mn),reg(ops[0]),rs1,ST[mn],OP_S)
+    if mn in BR: return _B(_cke(tgt(ops[2]),-4096,4094,mn),reg(ops[1]),reg(ops[0]),BR[mn],OP_B)
+    if mn == 'lui':   return _U(_ck(imm(ops[1]),0,0xFFFFF,'lui'),reg(ops[0]),OP_LUI)
+    if mn == 'auipc': return _U(_ck(imm(ops[1]),0,0xFFFFF,'auipc'),reg(ops[0]),OP_AUIPC)
     if mn == 'jal':
-        if len(ops)==1: return _J(tgt(ops[0]),0,OP_JAL)          # jal off
-        return _J(tgt(ops[1]),reg(ops[0]),OP_JAL)               # jal rd,off
+        if len(ops)==1: return _J(_cke(tgt(ops[0]),-(1<<20),(1<<20)-2,'jal'),0,OP_JAL)          # jal off
+        return _J(_cke(tgt(ops[1]),-(1<<20),(1<<20)-2,'jal'),reg(ops[0]),OP_JAL)               # jal rd,off
     if mn == 'jalr':
-        if len(ops)==2: off,rs1 = mem_operand(ops[1]); return _I(off,rs1,0,reg(ops[0]),OP_JALR)
-        return _I(imm(ops[2]),reg(ops[1]),0,reg(ops[0]),OP_JALR)
+        if len(ops)==2: off,rs1 = mem_operand(ops[1]); return _I(_ck(off,-2048,2047,'jalr'),rs1,0,reg(ops[0]),OP_JALR)
+        return _I(_ck(imm(ops[2]),-2048,2047,'jalr'),reg(ops[1]),0,reg(ops[0]),OP_JALR)
     # pseudo-instructions
     if mn == 'nop':  return _I(0,0,0,0,OP_I)
     if mn == 'mv':   return _I(0,reg(ops[1]),0,reg(ops[0]),OP_I)             # addi rd,rs,0
-    if mn == 'li':   return _I(imm(ops[1]),0,0,reg(ops[0]),OP_I)            # addi rd,x0,imm (12-bit)
-    if mn == 'j':    return _J(tgt(ops[0]),0,OP_JAL)
+    if mn == 'li':   return _I(_ck(imm(ops[1]),-2048,2047,'li'),0,0,reg(ops[0]),OP_I)  # addi rd,x0,imm
+    if mn == 'j':    return _J(_cke(tgt(ops[0]),-(1<<20),(1<<20)-2,'j'),0,OP_JAL)
     if mn == 'ret':  return _I(0,1,0,0,OP_JALR)                              # jalr x0,0(ra)
     if mn in ('halt','hlt'): return _J(0,0,OP_JAL)                           # jal x0,0 (self-loop)
     raise ValueError(f"unknown instruction '{mn}'")
 
+def expand(mn, ops):
+    """Expand pseudo-instructions to base instructions (a list; usually length 1).
+    'li' becomes lui+addi for full 32-bit immediates; b*z map to a branch vs x0."""
+    mn = mn.lower()
+    if mn == 'li':
+        rd = ops[0]; v = imm(ops[1]) & M
+        sv = v - (1 << 32) if (v & 0x80000000) else v
+        if -2048 <= sv <= 2047:                         # fits a single addi
+            return [('addi', [rd, 'x0', str(sv)])]
+        hi = ((v + 0x800) >> 12) & 0xFFFFF              # lui upper 20 bits (rounded)
+        lo = v - (hi << 12)                            # signed remainder, already in [-2048,2047]
+        if lo == 0:
+            return [('lui', [rd, str(hi)])]
+        return [('lui', [rd, str(hi)]), ('addi', [rd, rd, str(lo)])]
+    if mn in ('beqz', 'bnez', 'bgez', 'bltz'):          # branch-if-rs-vs-zero
+        base = {'beqz': 'beq', 'bnez': 'bne', 'bgez': 'bge', 'bltz': 'blt'}[mn]
+        return [(base, [ops[0], 'x0', ops[1]])]
+    if mn in ('blez', 'bgtz'):                           # zero on the left
+        base = {'blez': 'bge', 'bgtz': 'blt'}[mn]
+        return [(base, ['x0', ops[0], ops[1]])]
+    return [(mn, ops)]
+
 def assemble(lines):
-    """Two-pass: returns list of 32-bit words."""
-    items = []                                  # (mnemonic, ops)
+    """Two-pass: returns list of 32-bit words. Pseudo-instructions are expanded
+    first so PC/label offsets stay correct even when 'li' becomes lui+addi."""
+    items = []                                  # (pc, mnemonic, ops)
     labels = {}
     pc = 0
     for raw in lines:
-        s = raw.split('#')[0].strip()
+        s = raw.split('#')[0].split(';')[0].strip()
         if not s: continue
         while ':' in s:                          # leading label(s)
             lab, _, rest = s.partition(':')
@@ -116,8 +156,10 @@ def assemble(lines):
             if not s: break
         if not s: continue
         mn, *rest = s.split(None, 1)
-        items.append((pc, mn, split_ops(rest[0]) if rest else []))
-        pc += 4
+        ops = split_ops(rest[0]) if rest else []
+        for bmn, bops in expand(mn, ops):
+            items.append((pc, bmn, bops))
+            pc += 4
     return [encode(mn, ops, pc, labels) for (pc, mn, ops) in items]
 
 # ----------------------------------------------------------------------------
