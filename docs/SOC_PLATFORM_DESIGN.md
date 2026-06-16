@@ -62,6 +62,14 @@ PS가 UART 프로토콜·로더·diff 리포트를 담당(소프트웨어), PL�
 | 0x2C | R | COMMIT_CNT | 리타이어한 명령 수(스텝/런 판단용) |
 | 0x30 | W | DMEM_RADDR | 데이터 메모리 읽기 주소(바이트) |
 | 0x34 | R | DMEM_RDATA | 백킹 데이터 RAM[RADDR] (※ write-back 주의: D$의 더티 라인은 아직 RAM에 없을 수 있음 — 정확한 덤프는 프로그램 halt 후, 가능하면 캐시가 비워진 상태에서) |
+| 0x38 | R | LED | 보드 LED 레지스터(하위 4비트). mmio_bridge의 led_reg를 그대로 노출 |
+| 0x3C | R | SW | 보드 스위치 입력(하위 4비트) |
+| 0x40 | R | BTN | 보드 버튼 입력(하위 4비트) |
+
+LED/SW/BTN 읽기 레지스터(0x38/0x3C/0x40)는 `rv32_ctrl_axi`의 `led_in/sw_in/btn_in` 포트로 들어오며,
+`rv32_platform`에서 `mmio_bridge.led_o`(내부 tap)와 보드 `sw_i/btn_i`에 직접 배선된다. 덕분에 PS/PC가
+CPU 실행을 방해하지 않고 주변장치 상태를 라이브 폴링할 수 있다(호스트 GUI의 Peripherals 패널). 이 3개
+레지스터가 없는 구(舊) 비트스트림에서는 0을 반환하며, GUI는 이를 감지해 micro-program 프로브로 대체한다.
 
 **상태변화(diff) 회신 방식**: PS가 STEP 1회 → COMMIT_CNT 증가 확인 → LAST_RD/LAST_WDATA
 읽어 "x{rd} <= {wdata}" 한 줄을 UART로 PC에 송신. (레지스터 전체 스냅샷 비교도 REG_ADDR/

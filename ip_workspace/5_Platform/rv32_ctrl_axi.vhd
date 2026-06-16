@@ -8,6 +8,7 @@
 --   0x08 W IMEM_ADDR  0x0C W IMEM_WDATA(load)  0x10 W DMEM_ADDR  0x14 W DMEM_WDATA(load)
 --   0x18 W REG_ADDR   0x1C R REG_RDATA  0x20 R PC  0x24 R LAST_RD  0x28 R LAST_WDATA
 --   0x2C R COMMIT_CNT 0x30 W DMEM_RADDR 0x34 R DMEM_RDATA
+--   0x38 R LED        0x3C R SW         0x40 R BTN   (board peripheral readback)
 -- =====================================================================
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
@@ -51,7 +52,11 @@ entity rv32_ctrl_axi is
         dbg_rd      : in  std_logic_vector(4 downto 0);
         dbg_wdata   : in  std_logic_vector(31 downto 0);
         dbg_commit  : in  std_logic;
-        halted      : in  std_logic
+        halted      : in  std_logic;
+        -- board peripheral readback (0x38 LED / 0x3C SW / 0x40 BTN)
+        led_in      : in  std_logic_vector(3 downto 0) := (others=>'0');
+        sw_in       : in  std_logic_vector(3 downto 0) := (others=>'0');
+        btn_in      : in  std_logic_vector(3 downto 0) := (others=>'0')
     );
 end rv32_ctrl_axi;
 
@@ -160,6 +165,9 @@ begin
                         when "001010" => rdata_q <= dbg_wdata;                     -- 0x28
                         when "001011" => rdata_q <= std_logic_vector(commit_cnt);  -- 0x2C
                         when "001101" => rdata_q <= dmem_rdata;                    -- 0x34
+                        when "001110" => rdata_q <= std_logic_vector(resize(unsigned(led_in),32)); -- 0x38 LED
+                        when "001111" => rdata_q <= std_logic_vector(resize(unsigned(sw_in), 32)); -- 0x3C SW
+                        when "010000" => rdata_q <= std_logic_vector(resize(unsigned(btn_in),32)); -- 0x40 BTN
                         when others   => rdata_q <= (others=>'0');
                     end case;
                 elsif (rvalid='1' and S_AXI_RREADY='1') then
