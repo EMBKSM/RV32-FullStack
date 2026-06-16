@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+	[bootloader] C:/work/github/RV32-FullStack/rv_ps/rv_platform/zynq_fsbl/build/fsbl.elf
+	C:/work/github/RV32-FullStack/rv_ps/rv_firmware/_ide/bitstream/rv32_top_wrapper.bit
+	C:/work/github/RV32-FullStack/rv_ps/rv_firmware/build/rv_firmware.elf
+}
