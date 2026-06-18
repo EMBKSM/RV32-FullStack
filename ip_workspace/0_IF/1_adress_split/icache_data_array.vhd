@@ -25,6 +25,10 @@ end icache_data_array;
 architecture Behavioral of icache_data_array is
     type line_mem_t is array (0 to 255) of std_logic_vector(127 downto 0);
     signal mem : line_mem_t := (others => (others => '0'));
+    -- Map storage into LUT distributed RAM (async read, whole-line sync write)
+    -- instead of FFs + a 256:1 read mux -> large F7/F8 (slice) savings.
+    attribute ram_style : string;
+    attribute ram_style of mem : signal is "distributed";
     signal sel : std_logic_vector(127 downto 0);
 begin
     sel <= mem(to_integer(unsigned(idx)));

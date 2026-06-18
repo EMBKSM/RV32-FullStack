@@ -1,5 +1,12 @@
 -- ddata_array.vhd - D-cache data SRAM: 256 lines x 128b (4 words)
 -- word load + byte-strobed store-hit + whole-line refill/writeback
+--
+-- LUTRAM (distributed RAM) implementation: 16 independent byte lanes, each a
+-- 256 deep x 8 bit *1-D array of std_logic_vector* (the template Vivado infers
+-- as distributed RAM), synchronous write / asynchronous read. Same ports and
+-- same-cycle async-read timing as the prior flip-flop array, but the storage
+-- maps to LUT distributed RAM instead of FFs + a 256:1 read mux -> large F7/F8
+-- (slice) savings. Functionally identical (verified by equivalence simulation).
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
@@ -20,52 +27,42 @@ entity ddata_array is
 end ddata_array;
 
 architecture Behavioral of ddata_array is
-    type mem_t is array (0 to 255) of std_logic_vector(127 downto 0);
-    signal mem : mem_t;
-    signal i   : integer range 0 to 255;
+    attribute ram_style : string;
+    signal i      : integer range 0 to 255;
+    signal line_r : std_logic_vector(127 downto 0);
 begin
     i <= to_integer(unsigned(idx));
-    line_out <= mem(i);
 
-    process(mem, i, word_off)
+    -- One distributed-RAM byte lane per byte of the 128-bit line.
+    -- Lane b holds line byte b; word w (= word_off) occupies lanes 4w..4w+3.
+    gen_lanes : for b in 0 to 15 generate
+        type lane_t is array (0 to 255) of std_logic_vector(7 downto 0);
+        signal lane : lane_t;
+        attribute ram_style of lane : signal is "distributed";
     begin
-        case word_off is
-            when "00"   => word_out <= mem(i)(31 downto 0);
-            when "01"   => word_out <= mem(i)(63 downto 32);
-            when "10"   => word_out <= mem(i)(95 downto 64);
-            when others => word_out <= mem(i)(127 downto 96);
-        end case;
-    end process;
-
-    process(clk)
-    begin
-        if rising_edge(clk) then
-            if line_fill = '1' then
-                mem(i) <= fill_line;
-            elsif we = '1' then
-                case word_off is
-                    when "00" =>
-                        if wstrb(0)='1' then mem(i)(7 downto 0)    <= wdata(7 downto 0);   end if;
-                        if wstrb(1)='1' then mem(i)(15 downto 8)   <= wdata(15 downto 8);  end if;
-                        if wstrb(2)='1' then mem(i)(23 downto 16)  <= wdata(23 downto 16); end if;
-                        if wstrb(3)='1' then mem(i)(31 downto 24)  <= wdata(31 downto 24); end if;
-                    when "01" =>
-                        if wstrb(0)='1' then mem(i)(39 downto 32)  <= wdata(7 downto 0);   end if;
-                        if wstrb(1)='1' then mem(i)(47 downto 40)  <= wdata(15 downto 8);  end if;
-                        if wstrb(2)='1' then mem(i)(55 downto 48)  <= wdata(23 downto 16); end if;
-                        if wstrb(3)='1' then mem(i)(63 downto 56)  <= wdata(31 downto 24); end if;
-                    when "10" =>
-                        if wstrb(0)='1' then mem(i)(71 downto 64)  <= wdata(7 downto 0);   end if;
-                        if wstrb(1)='1' then mem(i)(79 downto 72)  <= wdata(15 downto 8);  end if;
-                        if wstrb(2)='1' then mem(i)(87 downto 80)  <= wdata(23 downto 16); end if;
-                        if wstrb(3)='1' then mem(i)(95 downto 88)  <= wdata(31 downto 24); end if;
-                    when others =>
-                        if wstrb(0)='1' then mem(i)(103 downto 96) <= wdata(7 downto 0);   end if;
-                        if wstrb(1)='1' then mem(i)(111 downto 104)<= wdata(15 downto 8);  end if;
-                        if wstrb(2)='1' then mem(i)(119 downto 112)<= wdata(23 downto 16); end if;
-                        if wstrb(3)='1' then mem(i)(127 downto 120)<= wdata(31 downto 24); end if;
-                end case;
+        -- asynchronous read of this byte lane
+        line_r(b*8+7 downto b*8) <= lane(i);
+        -- synchronous write of the whole 8-bit element (clean LUTRAM template)
+        process(clk)
+        begin
+            if rising_edge(clk) then
+                if line_fill = '1' then
+                    lane(i) <= fill_line(b*8+7 downto b*8);
+                elsif (we = '1')
+                      and (to_integer(unsigned(word_off)) = b/4)
+                      and (wstrb(b mod 4) = '1') then
+                    lane(i) <= wdata((b mod 4)*8+7 downto (b mod 4)*8);
+                end if;
             end if;
-        end if;
-    end process;
+        end process;
+    end generate;
+
+    line_out <= line_r;
+
+    -- load word select (4:1 mux), identical to prior word_off decode
+    with word_off select word_out <=
+        line_r(31 downto 0)   when "00",
+        line_r(63 downto 32)  when "01",
+        line_r(95 downto 64)  when "10",
+        line_r(127 downto 96) when others;
 end Behavioral;

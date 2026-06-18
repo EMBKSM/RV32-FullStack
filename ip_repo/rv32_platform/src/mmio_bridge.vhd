@@ -78,9 +78,13 @@ architecture Behavioral of mmio_bridge is
            sel_i2c0, sel_i2c1, sel_uart, sel_pwm : std_logic;
     signal gpio_rd, spi0_rd, spi1_rd, i2c0_rd, i2c1_rd, uart_rd, pwm_rd
            : std_logic_vector(31 downto 0);
+    -- NPU (uncached accelerator window @ 0x3xxx_xxxx)
+    signal is_npu : std_logic;
+    signal npu_rd : std_logic_vector(31 downto 0);
 begin
     -- MMIO region = 0x1xxx_xxxx
     is_mmio <= '1' when c_addr(31 downto 28) = x"1" else '0';
+    is_npu  <= '1' when c_addr(31 downto 28) = x"3" else '0';
     blk     <= c_addr(7 downto 5);
     regw    <= c_addr(4 downto 2);
 
@@ -88,8 +92,8 @@ begin
     d_addr  <= c_addr;
     d_wdata <= c_wdata;
     d_wstrb <= c_wstrb;
-    d_we    <= c_we and not is_mmio;
-    d_re    <= c_re and not is_mmio;
+    d_we    <= c_we and not is_mmio and not is_npu;
+    d_re    <= c_re and not is_mmio and not is_npu;
 
     -- block selects
     sel_sys  <= '1' when is_mmio='1' and blk="000" else '0';
@@ -171,7 +175,14 @@ begin
         port map (clk=>clk, rst=>reset, sel=>sel_pwm, we=>c_we, reg=>regw,
                   wdata=>c_wdata, rdata=>pwm_rd, pwm_o=>pwm_o);
 
-    -- back to core: MMIO is single-cycle (no stall); else follow the cache
-    c_rdata <= mmio_rd  when is_mmio = '1' else d_rdata;
-    c_stall <= '0'      when is_mmio = '1' else d_stall;
+    -- NPU accelerator (uncached, single-cycle MMIO slave @ 0x3000_0000)
+    -- 16x16 hybrid array (220 DSP48E1 + 36 LUT MAC), 16 KiB window -> addr[13:0].
+    u_npu : entity work.npu_top16
+        port map (clk=>clk, rst=>reset, sel=>is_npu, we=>c_we,
+                  addr=>c_addr(13 downto 0), wdata=>c_wdata, wstrb=>c_wstrb, rdata=>npu_rd);
+
+    -- back to core: NPU/MMIO are single-cycle (no stall); else follow the cache
+    c_rdata <= npu_rd   when is_npu  = '1' else
+               mmio_rd  when is_mmio = '1' else d_rdata;
+    c_stall <= '0'      when (is_mmio = '1' or is_npu = '1') else d_stall;
 end Behavioral;
