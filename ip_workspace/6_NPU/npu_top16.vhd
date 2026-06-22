@@ -22,7 +22,7 @@ end npu_top16;
 architecture rtl of npu_top16 is
 begin
     u_npu : entity work.npu_top
-        generic map (N => 16, AW => 14, DSP_BUDGET => 220)   -- 220 DSP48E1 + 36 LUT MAC = 256
+        generic map (N => 16, AW => 14, DSP_BUDGET => 200)   -- 200 DSP48E1 + 56 LUT MAC = 256 (20 spare DSP eases routing)
         port map (clk=>clk, rst=>rst, sel=>sel, we=>we, addr=>addr,
                   wdata=>wdata, wstrb=>wstrb, rdata=>rdata);
 end rtl;

@@ -1,0 +1,8 @@
+0.7
+2020.2
+Nov 14 2025
+19:37:27
+C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_array.vhd,1781776159,vhdl,C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top.vhd,,,npu_array,,,,,,,,
+C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_pe.vhd,1781776144,vhdl,C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_array.vhd,,,npu_pe,,,,,,,,
+C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top.vhd,1781779263,vhdl,C:/work/github/RV32-FullStack/verification/npu_sim/tb_npu.vhd,,,npu_top,,,,,,,,
+C:/work/github/RV32-FullStack/verification/npu_sim/tb_npu.vhd,1781779294,vhdl,,,,tb_npu,,,,,,,,

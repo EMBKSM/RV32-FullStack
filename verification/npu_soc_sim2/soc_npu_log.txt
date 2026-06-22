@@ -1,0 +1,176 @@
+=== xvhdl (dependency-ordered) === 
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/0_PC/next_pc_mux.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'next_pc_mux'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/0_PC/pc_adder.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'pc_adder'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/0_PC/program_counter.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'pc_reg'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/address_aligner.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'addr_aligner'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/cache_controller.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'cache_controller'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/comparator.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'comparator'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/icache_axi_adapter.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'icache_axi_adapter'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/icache_data_array.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'icache_data_array'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/tag_array.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'tag_array'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/0_IF/1_adress_split/icache_unit.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'icache_unit'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/1_ID/control_unit.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'control_unit'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/1_ID/csr_file.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'csr_file'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/1_ID/hazard_unit.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'hazard_unit'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/1_ID/imm_gen.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'imm_gen'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/1_ID/register_file.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'register_file'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/2_EX/alu.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'alu'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/2_EX/alu_control.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'alu_control'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/2_EX/bcu.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'bcu'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/2_EX/forwarding_unit.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'forwarding_unit'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/2_EX/trap_unit.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'trap_unit'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/axi_master.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'axi_master'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/axi_slave_mem.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'axi_slave_mem'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/dtag_array.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'dtag_array'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/ddata_array.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'ddata_array'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/dcache_controller.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'dcache_controller'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/cache_unit.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'cache_unit'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/read_aligner.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'read_aligner'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/3_Mem/write_strobe_gen.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'write_strobe_gen'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/4_WB/result_mux.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'result_mux'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/gpio_port.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'gpio_port'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/i2c_master.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'i2c_master'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/spi_master.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'spi_master'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_pe.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_pe'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_array.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_array'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_top'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/pwm_gen.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'pwm_gen'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/uart_lite.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'uart_lite'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/mmio_bridge.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'mmio_bridge'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/5_Platform/rv32_ctrl_axi.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'rv32_ctrl_axi'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/common/pipeline_reg.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'pipeline_reg'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/rv32_core.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'rv32_core'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/rv32_soc.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'rv32_soc'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/verification/npu_soc_sim/rv32_soc_npu.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'rv32_soc_npu'
+[xvhdl exit=0] 
+=== xvlog === 
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/work/github/RV32-FullStack/verification/npu_soc_sim2/tb_rv32_soc_npu.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_rv32_soc_npu
+[xvlog exit=0] 
+=== xelab === 
+Vivado Simulator v2025.2
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+Running: C:/Xilinx/2025.2/Vivado/bin/unwrapped/win64.o/xelab.exe tb_rv32_soc_npu -s socnpu 
+Multi-threading is on. Using 14 slave threads.
+Starting static elaboration
+Pass Through NonSizing Optimizer
+Completed static elaboration
+Starting simulation data flow analysis
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling package std.standard
+Compiling package std.textio
+Compiling package ieee.std_logic_1164
+Compiling package ieee.numeric_std
+Compiling architecture behavioral of entity work.pc_reg [pc_reg_default]
+Compiling architecture behavioral of entity work.pc_adder [pc_adder_default]
+Compiling architecture behavioral of entity work.next_pc_mux [next_pc_mux_default]
+Compiling architecture behavioral of entity work.control_unit [control_unit_default]
+Compiling architecture behavioral of entity work.imm_gen [imm_gen_default]
+Compiling architecture behavioral of entity work.register_file [register_file_default]
+Compiling architecture behavioral of entity work.hazard_unit [hazard_unit_default]
+Compiling architecture behavioral of entity work.forwarding_unit [forwarding_unit_default]
+Compiling architecture behavioral of entity work.alu_control [alu_control_default]
+Compiling architecture behavioral of entity work.alu [alu_default]
+Compiling architecture behavioral of entity work.bcu [bcu_default]
+Compiling architecture behavioral of entity work.csr_file [csr_file_default]
+Compiling architecture behavioral of entity work.trap_unit [trap_unit_default]
+Compiling architecture behavioral of entity work.read_aligner [read_aligner_default]
+Compiling architecture behavioral of entity work.write_strobe_gen [write_strobe_gen_default]
+Compiling architecture behavioral of entity work.result_mux [result_mux_default]
+Compiling architecture behavioral of entity work.rv32_core [rv32_core_default]
+Compiling architecture rtl of entity work.gpio_port [gpio_port_default]
+Compiling architecture rtl of entity work.spi_master [spi_master_default]
+Compiling architecture rtl of entity work.i2c_master [i2c_master_default]
+Compiling architecture rtl of entity work.uart_lite [uart_lite_default]
+Compiling architecture rtl of entity work.pwm_gen [pwm_gen_default]
+Compiling architecture rtl of entity work.npu_pe [npu_pe_default]
+Compiling architecture rtl of entity work.npu_array [npu_array_default]
+Compiling architecture rtl of entity work.npu_top [npu_top_default]
+Compiling architecture behavioral of entity work.mmio_bridge [mmio_bridge_default]
+Compiling architecture behavioral of entity work.addr_aligner [addr_aligner_default]
+Compiling architecture behavioral of entity work.tag_array [tag_array_default]
+Compiling architecture behavioral of entity work.comparator [comparator_default]
+Compiling architecture behavioral of entity work.cache_controller [cache_controller_default]
+Compiling architecture behavioral of entity work.icache_data_array [icache_data_array_default]
+Compiling architecture behavioral of entity work.icache_axi_adapter [icache_axi_adapter_default]
+Compiling architecture behavioral of entity work.icache_unit [icache_unit_default]
+Compiling architecture behavioral of entity work.axi_slave_mem [axi_slave_mem_default]
+Compiling architecture behavioral of entity work.dtag_array [dtag_array_default]
+Compiling architecture behavioral of entity work.dcache_controller [dcache_controller_default]
+Compiling architecture behavioral of entity work.ddata_array [ddata_array_default]
+Compiling architecture behavioral of entity work.axi_master [axi_master_default]
+Compiling architecture behavioral of entity work.cache_unit [cache_unit_default]
+Compiling architecture behavioral of entity work.rv32_soc_npu [rv32_soc_npu_default]
+Compiling module work.tb_rv32_soc_npu
+Built simulation snapshot socnpu
+[xelab exit=0] 
+=== xsim === 
+
+****** xsim v2025.2 (64-bit)
+  **** SW Build 6299465 on Fri Nov 14 19:35:11 GMT 2025
+  **** IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+  **** SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+  **** Start of session at: Thu Jun 18 21:08:48 2026
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source xsim.dir/socnpu/xsim_script.tcl
+# xsim {socnpu} -autoloadwcfg -runall
+Time resolution is 1 ps
+run -all
+==== full-RTL SoC+NPU end-to-end (driver executed on real RTL) ====
+  PASS C[0][0] : x10 = 4
+  PASS C[1][1] : x11 = 16
+  PASS C[3][5] : x13 = 96
+  PASS C[7][7] : x12 = 256
+RESULT: ALL PASS - CPU(RTL)+bridge+NPU(RTL) ran the driver, GEMM correct
+$finish called at time : 400457 ns : File "C:/work/github/RV32-FullStack/verification/npu_soc_sim2/tb_rv32_soc_npu.sv" Line 56
+exit
+INFO: [Common 17-206] Exiting xsim at Thu Jun 18 21:08:52 2026...
+[xsim exit=0] 
+ALL-DONE 

@@ -1,0 +1,1 @@
+xsim {socnpu} -autoloadwcfg -runall
