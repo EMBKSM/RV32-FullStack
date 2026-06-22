@@ -42,7 +42,9 @@ entity npu_top is
         addr   : in  std_logic_vector(AW-1 downto 0);    -- byte offset within window
         wdata  : in  std_logic_vector(31 downto 0);
         wstrb  : in  std_logic_vector(3 downto 0);        -- (unused: word-aligned writes)
-        rdata  : out std_logic_vector(31 downto 0)
+        re     : in  std_logic := '0';                    -- read strobe (pipelined readback)
+        rdata  : out std_logic_vector(31 downto 0);
+        rd_valid : out std_logic                          -- '1' when rdata holds the requested word
     );
 end npu_top;
 
@@ -88,6 +90,23 @@ architecture rtl of npu_top is
     signal wr : std_logic;
     signal region : std_logic_vector(1 downto 0);
     signal is_ctrl, is_a, is_b, is_c : std_logic;
+
+    -- pipelined C read-back (splits the 256:1 acc_flat select into staged muxes so
+    -- the path PE-acc -> core no longer fails timing).  3-cycle latency, handshaked
+    -- with rd_valid; the core's mem_stall holds the load until rd_valid.
+    type word_arr is array (0 to N-1) of std_logic_vector(31 downto 0);
+    signal row_words : word_arr;                          -- stage1: per-row col-selected word
+    signal acc_sel   : std_logic_vector(31 downto 0);     -- stage2: row-selected accumulator
+    signal prod_q    : signed(63 downto 0);               -- stage3: requant multiply (-> DSP)
+    signal shf_q     : signed(63 downto 0);               -- stage4: rounded + shifted
+    signal rdata_q   : std_logic_vector(31 downto 0);     -- stage5: finalized (raw/requant/status)
+    signal rd_cnt    : integer range 0 to 5 := 0;
+    signal row_idx_q : integer range 0 to N-1 := 0;
+    signal is_c_q, is_ctrl_q : std_logic := '0';
+    signal addr32_q  : std_logic_vector(1 downto 0) := "00";
+    signal col_idx   : integer range 0 to N-1;
+    signal row_idx   : integer range 0 to N-1;
+    signal rd_req    : std_logic;
 begin
     ----------------------------------------------------------------------------
     -- decode  (region = top two used address bits)
@@ -182,44 +201,81 @@ begin
                   a_west=>a_west, b_north=>b_north, acc_flat=>acc_flat);
 
     ----------------------------------------------------------------------------
-    -- read mux (combinational)
+    -- pipelined read-back (5 stages) -- closes timing toward 100 MHz
     ----------------------------------------------------------------------------
-    -- C read returns the raw INT32 accumulator, OR (when CFG.enable=1) the
-    -- requantized INT8 (sign-extended): clip((acc*mult + round) >>> shift, -128,127).
-    process(is_c, is_ctrl, addr, busy, done_l, acc_flat, cfg)
-        variable cw     : integer;
-        variable acc    : signed(31 downto 0);
+    --  s0 col-select (per row)   s1 row-select   s2 requant multiply (->DSP)
+    --  s3 round+arith-shift       s4 clip + select raw/requant/status
+    -- The 256:1 accumulator mux AND the requant multiply (32x17, was 19 CARRY4
+    -- in one combinational cloud -> the -3.3..-5.4 ns path) are each isolated in
+    -- their own registered stage.  Read held by core (re=1,we=0); rd_valid pulses
+    -- when rdata_q is valid (5-clk latency, transparent via mem_stall). MAC array
+    -- untouched.
+    rd_req  <= sel and re and (not we);
+    col_idx <= to_integer(unsigned(addr(NBITS+1 downto 2)));      -- cw mod N  (column)
+    row_idx <= to_integer(unsigned(addr(CHI downto NBITS+2)));    -- cw / N    (row)
+
+    process(clk)
         variable mult_s : signed(16 downto 0);
         variable sh     : integer range 0 to 63;
-        variable prod   : signed(63 downto 0);
-        variable shf    : signed(63 downto 0);
+        variable rnd    : signed(63 downto 0);
         variable q8     : signed(7 downto 0);
     begin
-        rdata <= (others=>'0');
-        if is_c='1' then
-            cw := to_integer(unsigned(addr(CHI downto 2)));
-            if cw <= N*N-1 then
-                acc := signed(acc_flat(cw*32+31 downto cw*32));
-                if cfg(0)='1' then                                   -- requantize -> INT8
-                    mult_s := signed('0' & cfg(31 downto 16));
-                    sh     := to_integer(unsigned(cfg(13 downto 8)));
-                    prod   := resize(acc * mult_s, 64);
-                    if sh > 0 then
-                        prod := prod + shift_left(to_signed(1, 64), sh-1);   -- round half up
-                    end if;
-                    shf := shift_right(prod, sh);
-                    if    shf > 127  then q8 := to_signed(127, 8);
-                    elsif shf < -128 then q8 := to_signed(-128, 8);
-                    else  q8 := resize(shf, 8);
-                    end if;
-                    rdata <= std_logic_vector(resize(q8, 32));       -- sign-extended INT8
-                else
-                    rdata <= std_logic_vector(acc);                  -- raw INT32
-                end if;
+        if rising_edge(clk) then
+            if rst='1' then
+                rd_cnt <= 0;
+            elsif rd_req='1' then
+                case rd_cnt is
+                    when 0 =>                                    -- s0: column select per row
+                        for r in 0 to N-1 loop
+                            row_words(r) <= acc_flat((r*N+col_idx)*32+31 downto (r*N+col_idx)*32);
+                        end loop;
+                        row_idx_q <= row_idx;
+                        is_c_q    <= is_c;
+                        is_ctrl_q <= is_ctrl;
+                        addr32_q  <= addr(3 downto 2);
+                        rd_cnt    <= 1;
+                    when 1 =>                                    -- s1: row select
+                        acc_sel <= row_words(row_idx_q);
+                        rd_cnt  <= 2;
+                    when 2 =>                                    -- s2: requant multiply (registered -> DSP)
+                        mult_s := signed('0' & cfg(31 downto 16));
+                        prod_q <= resize(signed(acc_sel) * mult_s, 64);
+                        rd_cnt <= 3;
+                    when 3 =>                                    -- s3: round + arithmetic shift (registered)
+                        sh := to_integer(unsigned(cfg(13 downto 8)));
+                        if sh > 0 then
+                            rnd := prod_q + shift_left(to_signed(1, 64), sh-1);
+                        else
+                            rnd := prod_q;
+                        end if;
+                        shf_q <= shift_right(rnd, sh);
+                        rd_cnt <= 4;
+                    when 4 =>                                    -- s4: clip + select raw/requant/status
+                        if    shf_q > 127  then q8 := to_signed(127, 8);
+                        elsif shf_q < -128 then q8 := to_signed(-128, 8);
+                        else  q8 := resize(shf_q, 8);
+                        end if;
+                        if is_c_q='1' then
+                            if cfg(0)='1' then
+                                rdata_q <= std_logic_vector(resize(q8, 32));  -- requant INT8 (sign-ext)
+                            else
+                                rdata_q <= acc_sel;                           -- raw INT32
+                            end if;
+                        elsif is_ctrl_q='1' and addr32_q="01" then
+                            rdata_q <= (1 => done_l, 0 => busy, others => '0');
+                        else
+                            rdata_q <= (others => '0');
+                        end if;
+                        rd_cnt <= 5;
+                    when others =>                               -- 5: valid 1 clk, then rearm
+                        rd_cnt <= 0;
+                end case;
+            else
+                rd_cnt <= 0;                                     -- no access -> rearm
             end if;
-        elsif is_ctrl='1' and addr(3 downto 2)="01" then
-            rdata(0) <= busy;
-            rdata(1) <= done_l;
         end if;
     end process;
+
+    rdata    <= rdata_q;
+    rd_valid <= '1' when rd_cnt = 5 else '0';
 end rtl;

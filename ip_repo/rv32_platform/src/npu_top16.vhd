@@ -15,7 +15,9 @@ entity npu_top16 is
         addr   : in  std_logic_vector(13 downto 0);
         wdata  : in  std_logic_vector(31 downto 0);
         wstrb  : in  std_logic_vector(3 downto 0);
-        rdata  : out std_logic_vector(31 downto 0)
+        re     : in  std_logic := '0';
+        rdata  : out std_logic_vector(31 downto 0);
+        rd_valid : out std_logic
     );
 end npu_top16;
 
@@ -24,5 +26,5 @@ begin
     u_npu : entity work.npu_top
         generic map (N => 16, AW => 14, DSP_BUDGET => 200)   -- 200 DSP48E1 + 56 LUT MAC = 256 (20 spare DSP eases routing)
         port map (clk=>clk, rst=>rst, sel=>sel, we=>we, addr=>addr,
-                  wdata=>wdata, wstrb=>wstrb, rdata=>rdata);
+                  wdata=>wdata, wstrb=>wstrb, re=>re, rdata=>rdata, rd_valid=>rd_valid);
 end rtl;

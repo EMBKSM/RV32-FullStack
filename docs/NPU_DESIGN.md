@@ -197,8 +197,7 @@ the NPU address slice to `addr[13:0]` and instantiate `npu_top16`), then synth�
 2-D array confuses RAM inference — same fix as the cache: split into per-lane 1-D arrays) — harmless
 for fit/timing, a later area tidy-up.
 
-## 12. Future work
+## 12. Fmax optimization — pipelined read-back (done)
 
-- **DMA / direct memory read** so the NPU pulls A/B from CPU memory instead of MMIO copy.
-- **Weight-stationary mode** for conv/inference weight reuse.
-- **im2col helper** so CNN conv maps onto the GEMM engine.
+Full write-up: `docs/PERFORMANCE_FMAX.md`. Summary: the SoC Fmax went **37 → 94.3 MHz** without
+touching the MAC array. Post-route showed the only failing paths were the NP

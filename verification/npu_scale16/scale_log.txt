@@ -11,11 +11,11 @@ INFO: [VRFC 10-3107] analyzing entity 'npu_top16'
 === xvlog === 
 INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" into library work
 INFO: [VRFC 10-311] analyzing module tb_npu_scale16
-WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:90]
-WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:102]
-WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:126]
-WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:134]
-WARNING: [VRFC 10-3824] variable 'Kr' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:142]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:97]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:109]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:133]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:141]
+WARNING: [VRFC 10-3824] variable 'Kr' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:149]
 [xvlog exit=0] 
 === xelab === 
 Vivado Simulator v2025.2
@@ -33,9 +33,10 @@ Compiling package std.standard
 Compiling package std.textio
 Compiling package ieee.std_logic_1164
 Compiling package ieee.numeric_std
-Compiling architecture rtl of entity work.npu_pe [npu_pe_default]
-Compiling architecture rtl of entity work.npu_array [\npu_array(n=16)\]
-Compiling architecture rtl of entity work.npu_top [\npu_top(n=16,aw=14)\]
+Compiling architecture rtl of entity work.npu_pe [\npu_pe(1,3)\]
+Compiling architecture rtl of entity work.npu_pe [\npu_pe(dsp_use="no")(1,2)\]
+Compiling architecture rtl of entity work.npu_array [\npu_array(n=16,dsp_budget=200)\]
+Compiling architecture rtl of entity work.npu_top [\npu_top(n=16,aw=14,dsp_budget=2...]
 Compiling architecture rtl of entity work.npu_top16 [npu_top16_default]
 Compiling module work.tb_npu_scale16
 Built simulation snapshot scaletb
@@ -46,7 +47,7 @@ Built simulation snapshot scaletb
   **** SW Build 6299465 on Fri Nov 14 19:35:11 GMT 2025
   **** IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
   **** SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
-  **** Start of session at: Thu Jun 18 22:37:02 2026
+  **** Start of session at: Tue Jun 23 00:40:16 2026
     ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
     ** Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 
@@ -62,8 +63,8 @@ run -all
   [axis5] requantize (clip + OFF->raw + random) : done
 === checks=18688 errors=0 ===
 RESULT: ALL PASS - 16x16 NPU matches golden (GEMM+spatial+accum+random+requant)
-$finish called at time : 1804860 ns : File "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" Line 153
+$finish called at time : 2555340 ns : File "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" Line 160
 exit
-INFO: [Common 17-206] Exiting xsim at Thu Jun 18 22:37:06 2026...
+INFO: [Common 17-206] Exiting xsim at Tue Jun 23 00:40:19 2026...
 [xsim exit=0] 
 ALL-DONE 

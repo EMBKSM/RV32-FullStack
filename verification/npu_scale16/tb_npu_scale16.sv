@@ -11,9 +11,10 @@
 module tb_npu_scale16;
   localparam int N = 16;
   logic clk=0, rst=1;
-  logic sel=0, we=0; logic [13:0] addr=0; logic [31:0] wdata=0; logic [3:0] wstrb=0; logic [31:0] rdata;
+  logic sel=0, we=0, re=0, rd_valid; logic [13:0] addr=0; logic [31:0] wdata=0; logic [3:0] wstrb=0; logic [31:0] rdata;
   always #5 clk=~clk;
-  npu_top16 dut(.clk(clk),.rst(rst),.sel(sel),.we(we),.addr(addr),.wdata(wdata),.wstrb(wstrb),.rdata(rdata));
+  npu_top16 dut(.clk(clk),.rst(rst),.sel(sel),.we(we),.addr(addr),.wdata(wdata),.wstrb(wstrb),
+                .re(re),.rdata(rdata),.rd_valid(rd_valid));
 
   int errors=0, checks=0;
   int A_g[0:N-1][0:63];
@@ -24,7 +25,11 @@ module tb_npu_scale16;
     @(negedge clk); sel=0; we=0; wstrb=0;
   endtask
   task automatic br(input int a, output int d);
-    @(negedge clk); addr=a[13:0]; sel=1; we=0; #1; d=rdata; @(negedge clk); sel=0;
+    // pipelined read: hold sel/re until rd_valid, then capture (3-cycle latency)
+    @(negedge clk); addr=a[13:0]; sel=1; we=0; re=1;
+    forever begin @(posedge clk); #1; if(rd_valid) break; end
+    d=rdata;
+    @(negedge clk); sel=0; re=0;
   endtask
   function automatic int Aaddr(input int i,input int k); return 'h1000 + i*256 + k*4; endfunction
   function automatic int Baddr(input int k,input int j); return 'h2000 + j*256 + k*4; endfunction
@@ -45,11 +50,13 @@ module tb_npu_scale16;
     for(int j=0;j<N;j++) for(int k=0;k<K;k++) bw(Baddr(k,j), B_g[k][j]&'hFF);
   endtask
   task automatic start_and_wait(input bit clr);
-    int g; bw(0, clr?3:1);
-    addr='h4; sel=1; we=0; g=0;
-    forever begin @(posedge clk); g++; #1; if(rdata[1]) break;
-      if(g>6000) begin errors++; $display("  TIMEOUT(no done)"); break; end end
-    sel=0;
+    int g, s; bw(0, clr?3:1);
+    g=0;
+    forever begin
+      br('h4, s); g++;            // STATUS read (pipelined); bit1 = done
+      if(s[1]) break;
+      if(g>6000) begin errors++; $display("  TIMEOUT(no done)"); break; end
+    end
   endtask
   task automatic set_cfg(input int mult, input int sh, input bit en);
     bw('hC, ((mult&'hFFFF)<<16) | ((sh&'h3F)<<8) | (en?1:0));
@@ -148,9 +155,4 @@ module tb_npu_scale16;
     $display("  [axis5] requantize (clip + OFF->raw + random) : done");
 
     $display("=== checks=%0d errors=%0d ===",checks,errors);
-    if(errors==0) $display("RESULT: ALL PASS - 16x16 NPU matches golden (GEMM+spatial+accum+random+requant)");
-    else          $display("RESULT: FAIL (%0d errors)",errors);
-    $finish;
-  end
-  initial begin #800_000_000; $display("RESULT: TIMEOUT(sim)"); $finish; end
-endmodule
+    if(errors==0) $display("RESULT: 

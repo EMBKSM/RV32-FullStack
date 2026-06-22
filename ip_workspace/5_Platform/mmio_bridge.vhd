@@ -79,8 +79,10 @@ architecture Behavioral of mmio_bridge is
     signal gpio_rd, spi0_rd, spi1_rd, i2c0_rd, i2c1_rd, uart_rd, pwm_rd
            : std_logic_vector(31 downto 0);
     -- NPU (uncached accelerator window @ 0x3xxx_xxxx)
-    signal is_npu : std_logic;
-    signal npu_rd : std_logic_vector(31 downto 0);
+    signal is_npu       : std_logic;
+    signal npu_rd       : std_logic_vector(31 downto 0);
+    signal npu_rd_valid : std_logic;
+    signal npu_stall    : std_logic;
 begin
     -- MMIO region = 0x1xxx_xxxx
     is_mmio <= '1' when c_addr(31 downto 28) = x"1" else '0';
@@ -179,10 +181,8 @@ begin
     -- 16x16 hybrid array (220 DSP48E1 + 36 LUT MAC), 16 KiB window -> addr[13:0].
     u_npu : entity work.npu_top16
         port map (clk=>clk, rst=>reset, sel=>is_npu, we=>c_we,
-                  addr=>c_addr(13 downto 0), wdata=>c_wdata, wstrb=>c_wstrb, rdata=>npu_rd);
+                  addr=>c_addr(13 downto 0), wdata=>c_wdata, wstrb=>c_wstrb,
+                  re=>c_re, rdata=>npu_rd, rd_valid=>npu_rd_valid);
 
-    -- back to core: NPU/MMIO are single-cycle (no stall); else follow the cache
-    c_rdata <= npu_rd   when is_npu  = '1' else
-               mmio_rd  when is_mmio = '1' else d_rdata;
-    c_stall <= '0'      when (is_mmio = '1' or is_npu = '1') else d_stall;
-end Behavioral;
+    -- NPU reads are now pipelined (3-cycle): stall the core until rd_valid.
+    -- (The 256:1 accumulator read mux was split into register
