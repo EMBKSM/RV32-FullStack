@@ -200,24 +200,4 @@ for fit/timing, a later area tidy-up.
 ## 12. Fmax optimization — pipelined read-back (done)
 
 Full write-up: `docs/PERFORMANCE_FMAX.md`. Summary: the SoC Fmax went **37 → 94.3 MHz** without
-touching the MAC array. Post-route showed the only failing paths were the NPU **read-back**, not the
-systolic compute (every PE→PE path ~0.5 ns). Two paths were split into registered pipeline stages:
-
-1. The combinational **256:1 `acc_flat` select** (PE accumulator → core load reg, ~26 ns) → col-select
-   then row-select stages. Also removed the routing congestion (build 1 h 17 m → 8 min).
-2. The **requant 32×17 multiply** (fabric, 19 CARRY4, on the path even for raw reads) → multiply
-   (→DSP), round+shift, clip/select stages.
-
-The read is now 5-cycle, held by the core via `mem_stall` until `npu_top` asserts `rd_valid`
-(new `re`/`rd_valid` ports; `mmio_bridge` drives `c_stall = is_npu and c_re and not rd_valid`).
-Software is unchanged (a plain `lw` just stalls a few cycles). Bit-identical results: 18,688-check
-TB still passes. Board operating point 90.9 MHz (FCLK0 ÷11); true ceiling 94.3 MHz via PL MMCM.
-
-## 13. Future work
-
-- **100 MHz close**: pipeline the systolic `t`-counter control fan-out + redesign the RV32 5-stage
-  core (ALU/forward/cache paths are the remaining ~800 sub-10ns endpoints).
-- **PL MMCM ("PLL MUX")** to dial the exact 94 MHz ceiling instead of the 90.9 MHz FCLK0 step.
-- **DMA / direct memory read** so the NPU pulls A/B from CPU memory instead of MMIO copy.
-- **Weight-stationary mode** for conv/inference weight reuse.
-- **im2col helper** so CNN conv maps onto the GEMM engine.
+touching the MAC array. Post-route showed the only failing paths were the NP

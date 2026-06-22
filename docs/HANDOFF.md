@@ -15,9 +15,9 @@ _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 
 ### 마무리 상태 (자동 진행 결과)
 - ✅ **커밋 완료: `e868476`** "perf(npu): pipeline NPU read-back -> Fmax 37->94.3 MHz". (sandbox git, rename기반 commit이 마운트에서 동작 — 단 delete는 EPERM이라 `.git`에 `_probe_dst`·`tmp_obj_*` 잔재 litter가 남음, 무해. 호스트에서 정리 권장.)
-- ⛔ **보드 통합테스트 @90.9MHz — JTAG/DAP 퇴화로 차단 (전원 재인가 필요).** 3회 시도 모두 `DAP (AHB AP transaction error 0x30000021), no Cortex-A9 targets` — 세션 초반 power-cycle 전과 동일한 상태. 로직 문제 아님(시뮬 18,688체크 + 포스트라우트 타이밍으로 94.3MHz 입증). 보드 JTAG/DAP가 또 꼬임. 스푸리어스 Vitis IDE를 띄웠다 닫았지만 DAP 에러는 board-side라 무변.
-  - **재개(전원 재인가 후 1회):** Run 대화상자(또는 터미널)에서 `C:\work\github\RV32-FullStack\flash\run_gemm_test_100.bat` 실행. FCLK0=0x00100B00(90.9MHz), 비트스트림=rv32_16x16_100mhz.bit(94MHz 빌드), 드라이버 동일. 통과 시 `C=[[39,53],[17,23]]` + `BOARD-GEMM-90MHZ: PASS`. **90.9MHz에서 통과하면 새 94MHz 비트스트림임이 자동 입증**(구 37MHz 비트스트림은 90.9MHz에서 실패).
-  - 100MHz로도 돌려보려면 FCLK0를 0x00100A00로(다만 WNS −0.602라 일부 경로 셋업 위반 — 2×2 GEMM은 우연히 통과할 수도, 보장 안 됨).
+- ✅ **보드 통합테스트 @90.9MHz — PASS** (전원 재인가 후 `run_gemm_test_100.bat` 1회). `C=[[39,53],[17,23]]` 골든 정확 일치, `BOARD-GEMM-90MHZ: PASS`, xsct exit=0. 90.9MHz 통과 = 새 94MHz 비트스트림 실보드 동작 입증(구 37MHz는 90.9서 실패). 파이프라인 리드백(5클럭 스톨 핸드셰이크)도 실리콘 end-to-end 동작 확인.
+  - (이력) 처음 3회는 전원 재인가 전 JTAG/DAP 퇴화(`DAP AHB AP transaction error`)로 실패 → 전원 OFF→ON 후 1회 통과.
+  - 100MHz로도 돌려보려면 FCLK0=0x00100A00 (다만 WNS −0.602라 일부 경로 셋업 위반 — 2×2 GEMM은 우연히 통과할 수도, 보장 안 됨). 정석 94MHz는 PL MMCM 필요.
 
 ---
 ## (과거 기록) 30 MHz 클럭다운 경로
@@ -89,7 +89,4 @@ _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 - 보조 스크립트(생성됨): flash/jtag_program_only.tcl(프로그램만), flash/jtag_gemm_test.tcl(GEMM 검증).
 
 ## 주의/환경 (Gotchas)
-- **좀비 프로세스**: 취소한 라우팅의 자식 vivado 프로세스가 "host 불일치"로 Vivado가 못 죽임 → 자기 라우팅 끝나면 자동 종료. impl_1은 Reset됨, synth_1(202 DSP)은 Complete 유지.
-- **git 쓰기는 호스트 경유 필요**: sandbox 마운트가 `.git` 내부 파일 삭제 불가(FUSE EPERM). Jun 16자 stale `.git/*.lock`을 호스트에서 지운 뒤 커밋해야 함(=Vivado Tcl `exec cmd /c {bat}` 방식).
-- Vivado: rv32_zynq 프로젝트 열려 있음, synth_1 완료, impl_1 reset 상태.
-- 클럭 다운 시 PL 주변장치(uart_lite/SPI/I2C/PWM Pmod)의 클럭 분주값도 50/30 배율로 바뀜 — NPU 데모엔 무관(PS↔PL AXI는 핸드셰이크라 클럭 무관).
+- **좀비 프로세스**: 취소한 라우팅의 자식 vivado 프로세스가 "host 불일치"로 Vivado가 못 죽임 → 자기 라우팅 끝

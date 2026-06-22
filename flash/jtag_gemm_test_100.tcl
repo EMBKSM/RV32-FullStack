@@ -45,5 +45,4 @@ if {$c00==39 && $c01==53 && $c10==17 && $c11==23} {
 } else {
     puts ">>> BOARD-GEMM-90MHZ: MISMATCH <<<"
 }
-disconnect
-puts "GEMM-TEST-100-COMPLETE"
+disconnec

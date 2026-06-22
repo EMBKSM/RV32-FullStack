@@ -155,9 +155,4 @@ module tb_npu_scale16;
     $display("  [axis5] requantize (clip + OFF->raw + random) : done");
 
     $display("=== checks=%0d errors=%0d ===",checks,errors);
-    if(errors==0) $display("RESULT: ALL PASS - 16x16 NPU matches golden (GEMM+spatial+accum+random+requant)");
-    else          $display("RESULT: FAIL (%0d errors)",errors);
-    $finish;
-  end
-  initial begin #800_000_000; $display("RESULT: TIMEOUT(sim)"); $finish; end
-endmodule
+    if(errors==0) $display("RESULT: 

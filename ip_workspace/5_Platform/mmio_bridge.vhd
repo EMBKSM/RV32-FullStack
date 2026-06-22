@@ -185,13 +185,4 @@ begin
                   re=>c_re, rdata=>npu_rd, rd_valid=>npu_rd_valid);
 
     -- NPU reads are now pipelined (3-cycle): stall the core until rd_valid.
-    -- (The 256:1 accumulator read mux was split into registered stages to close
-    --  timing; writes and MMIO stay single-cycle.)
-    npu_stall <= is_npu and c_re and (not npu_rd_valid);
-
-    -- back to core: MMIO single-cycle; NPU follows its read handshake; else cache
-    c_rdata <= npu_rd   when is_npu  = '1' else
-               mmio_rd  when is_mmio = '1' else d_rdata;
-    c_stall <= npu_stall when is_npu  = '1' else
-               '0'       when is_mmio = '1' else d_stall;
-end Behavioral;
+    -- (The 256:1 accumulator read mux was split into register
