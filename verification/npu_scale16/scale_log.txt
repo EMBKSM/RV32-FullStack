@@ -47,7 +47,7 @@ Built simulation snapshot scaletb
   **** SW Build 6299465 on Fri Nov 14 19:35:11 GMT 2025
   **** IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
   **** SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
-  **** Start of session at: Tue Jun 23 00:40:16 2026
+  **** Start of session at: Tue Jun 23 08:19:09 2026
     ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
     ** Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 
@@ -63,8 +63,8 @@ run -all
   [axis5] requantize (clip + OFF->raw + random) : done
 === checks=18688 errors=0 ===
 RESULT: ALL PASS - 16x16 NPU matches golden (GEMM+spatial+accum+random+requant)
-$finish called at time : 2555340 ns : File "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" Line 160
+$finish called at time : 2556060 ns : File "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" Line 160
 exit
-INFO: [Common 17-206] Exiting xsim at Tue Jun 23 00:40:19 2026...
+INFO: [Common 17-206] Exiting xsim at Tue Jun 23 08:19:15 2026...
 [xsim exit=0] 
 ALL-DONE 

@@ -1,18 +1,21 @@
 # 16×16 NPU SoC — Fmax Optimization Result
 
 **Target:** push the RV32 + 16×16 INT8 NPU SoC clock as high as possible on Zynq XC7Z020-CLG400-1.
-**Headline:** Fmax **37 MHz → 94.3 MHz** (≈2.5×) with zero change to the MAC array, by pipelining
-the two NPU read-back bottlenecks. Board operating point: **90.9 MHz** (clean, FCLK0 ÷11).
+**Headline:** Fmax **37 MHz → 100 MHz** (2.7×) with zero change to the MAC array, by pipelining
+three NPU control/read-back paths. **Timing closes at 100 MHz (WNS +0.085 ns, 0 failing endpoints)
+and is verified on real silicon** (GEMM C=[[39,53],[17,23]] correct @ 100 MHz, FCLK0 ÷10).
 
 ## Fmax progression
 
-| Build | NPU read-back | impl strategy | WNS @100MHz | crit. path | **Fmax** | build time |
-|-------|---------------|---------------|-------------|-----------|----------|-----------|
-| v1 16×16 (orig) | combinational 256:1 mux | RuntimeOptimized | (−6.74 @ 50MHz) | 26.74 ns | **37.4 MHz** | 1 h 17 m |
-| v2 | 3-stage (col→row→finalize) | default + phys_opt | −3.293 ns | 13.29 ns | **75.2 MHz** | 8 min |
-| v3 | 5-stage (+ requant pipeline) | Perf_ExplorePostRoutePhysOpt | **−0.602 ns** | 10.60 ns | **94.3 MHz** | ~25 min |
+| Build | NPU change | impl strategy | WNS @100MHz | crit. path | **Fmax** | build |
+|-------|-----------|---------------|-------------|-----------|----------|-------|
+| v1 16×16 (orig) | combinational 256:1 readback mux | RuntimeOptimized | (−6.74 @ 50MHz) | 26.74 ns | **37.4 MHz** | 1 h 17 m |
+| v2 | 3-stage readback (col→row→finalize) | default + phys_opt | −3.293 ns | 13.29 ns | **75.2 MHz** | 8 min |
+| v3 | + 5-stage requant pipeline | Perf_ExplorePostRoutePhysOpt | −0.602 ns | 10.60 ns | **94.3 MHz** | ~25 min |
+| **v4** | **+ register scratchpad feed (a_west/b_north)** | Perf_ExplorePostRoutePhysOpt | **+0.085 ns ✅** | 9.92 ns | **≥100 MHz** | ~22 min |
 
-Hold met throughout (WHS ≥ +0.014 ns). Failing endpoints @100MHz: 3196 → **817**.
+Hold met throughout (WHS ≥ +0.014 ns). Failing endpoints @100MHz: 3196 → 817 → **0**.
+**v4 is the board-verified design** (`flash/rv32_16x16_100mhz.bit`); v3 preserved as `rv32_16x16_94mhz_verified.bit`.
 
 ## What was the bottleneck (and the fix)
 
@@ -29,22 +32,25 @@ the core via `mem_stall`/`rd_valid`, so it stays transparent to software):
 Read latency is now 5 cycles (was combinational); negligible vs the GEMM compute, and the RV32
 program is unchanged (the bridge stalls the load until `rd_valid`).
 
-## Remaining path (the last 0.6 ns to 100 MHz)
+3. **Systolic `t`-counter feed** (`t_reg → (t−n) → async scratchpad read → DSP A-input`, ~10.5 ns,
+   CARRY4=10, high fanout — *all* of the 817 v3 failing endpoints traced here, **not** the core).
+   Fixed by registering the scratchpad outputs `a_west`/`b_north`: the long path is split at a flop
+   (compute→reg, reg→PE), and the whole input stream shifts uniformly by 1 cycle (`t_last += 1`),
+   so the result is bit-identical. **This single change closed 100 MHz: WNS −0.602 → +0.085 ns,
+   817 → 0 failing endpoints.**
 
-Worst path @100MHz is now the systolic **`t` counter → PE accumulator** control fan-out
-(`t_reg → gen_row[13].gen_col[0].u_pe/p_reg`, 10.46 ns). Closing 100 MHz from here would need
-(a) pipelining/replicating that control broadcast, and (b) the RV32 5-stage core itself — a
-50 MHz-era design whose ALU/forward/cache paths make up most of the 817 remaining failing
-endpoints. That is a core-pipeline redesign (deferred by choice: "achievable max Fmax").
+The RV32 core was *not* the limiter after all — once the t-counter feed was registered, every
+core path met at 100 MHz. The new (met) worst path is `core store → NPU scratchpad write` at
++0.085 ns. True 100 MHz reached with no core redesign.
 
-## Board operating point
+## Board operating point — 100 MHz verified
 
-The v3 bitstream closes timing at any clock ≤ **94.3 MHz**. FCLK0 (from the PS IO-PLL, 1000 MHz)
-divides only in integer steps, so the highest clean FCLK0 step is **90.9 MHz (÷11)** → setup
-slack +0.40 ns, hold +0.016 ns. To reach the full 94.3 MHz ceiling exactly, instantiate a PL
-MMCM/clock-wizard ("PLL MUX") fed by FCLK0 — left as a follow-up.
+The v4 bitstream closes timing at 100 MHz, which is exactly **FCLK0 ÷10** (PS IO-PLL 1000 MHz ÷ 10) —
+no PL MMCM needed (FCLK0 itself is the PS PLL through its dividers, i.e. the "PLL MUX"). Set via
+`mwr 0xF8000170 0x00100A00`. On-board GEMM at 100 MHz returns C=[[39,53],[17,23]] = golden, PASS.
 
-- 50 MHz (orig 8×8 baseline) → **90.9 MHz** verified 16×16 = **1.8× clock**, **4× the MACs** (64→256).
+- 50 MHz (orig 8×8 baseline, failed) → **100 MHz** verified 16×16 = **2× clock**, **4× the MACs** (64→256) = ~8× peak INT8 throughput.
+- Intermediate board-verified point also on record: 90.9 MHz with the v3 (94.3 MHz) bitstream.
 
 ## Functional verification
 

@@ -85,6 +85,7 @@ architecture rtl of npu_top is
 
     signal arr_en, arr_clr : std_logic;
     signal a_west, b_north : std_logic_vector(N*8-1 downto 0);
+    signal a_west_q, b_north_q : std_logic_vector(N*8-1 downto 0) := (others=>'0'); -- registered feed (breaks t->PE path)
     signal acc_flat        : std_logic_vector(N*N*32-1 downto 0);
 
     signal wr : std_logic;
@@ -151,12 +152,23 @@ begin
         end process;
     end generate;
 
+    -- register the skewed feed so the long t -> (t-n) -> scratchpad -> PE path is
+    -- broken at a flop.  Delays the whole input stream uniformly by 1 cycle (relative
+    -- skew preserved) => bit-identical result, one extra run cycle (t_last+1).
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            a_west_q  <= a_west;
+            b_north_q <= b_north;
+        end if;
+    end process;
+
     ----------------------------------------------------------------------------
     -- control FSM
     ----------------------------------------------------------------------------
     arr_en  <= '1' when st=S_RUN else '0';
     arr_clr <= '1' when (st=S_CLEAR and clr_acc='1') else '0';
-    t_last  <= resize(k_dim, 10) + (2*N-3);  -- last needed t = (K-1)+(N-1)+(N-1)
+    t_last  <= resize(k_dim, 10) + (2*N-2);  -- +1 vs before: feed pipeline reg adds 1 cycle
 
     process(clk)
     begin
@@ -198,7 +210,7 @@ begin
     u_array : entity work.npu_array
         generic map (N => N, DSP_BUDGET => DSP_BUDGET)
         port map (clk=>clk, en=>arr_en, clr=>arr_clr,
-                  a_west=>a_west, b_north=>b_north, acc_flat=>acc_flat);
+                  a_west=>a_west_q, b_north=>b_north_q, acc_flat=>acc_flat);
 
     ----------------------------------------------------------------------------
     -- pipelined read-back (5 stages) -- closes timing toward 100 MHz

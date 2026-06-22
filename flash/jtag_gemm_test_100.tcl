@@ -11,12 +11,12 @@ ps7_pll_init_data_3_0
 ps7_clock_init_data_3_0
 ps7_peripherals_init_data_3_0
 mwr 0xF8000008 0x0000DF0D
-mwr 0xF8000170 0x00100B00
+mwr 0xF8000170 0x00100A00
 mwr 0xF8000004 0x0000767B
 fpga -f C:/work/github/RV32-FullStack/flash/rv32_16x16_100mhz.bit
 ps7_post_config
 memmap -addr 0x40000000 -size 0x00010000 -flags 3
-puts "### 16x16 bitstream (Fmax 94.3MHz build) @ 90.9 MHz FCLK0=0x00100B00; driving RV32 via ctrl_axi ###"
+puts "### 16x16 bitstream (timing-closed 100MHz build) @ 100 MHz FCLK0=0x00100A00; driving RV32 via ctrl_axi ###"
 
 set B 0x40000000
 mwr [expr {$B + 0x00}] 0x1
@@ -38,11 +38,12 @@ puts "PC      = [format 0x%08x [lindex [mrd -value [expr {$B + 0x20}]] 0]]"
 puts "STATUS  = [format 0x%08x [lindex [mrd -value [expr {$B + 0x04}]] 0]]"
 proc rdreg {B n} { mwr [expr {$B + 0x18}] $n ; return [lindex [mrd -value [expr {$B + 0x1C}]] 0] }
 set c00 [rdreg $B 10] ; set c01 [rdreg $B 11] ; set c10 [rdreg $B 12] ; set c11 [rdreg $B 13]
-puts "BOARD  16x16 NPU GEMM @90.9MHz:  C00=$c00  C01=$c01  C10=$c10  C11=$c11"
+puts "BOARD  16x16 NPU GEMM @100MHz:  C00=$c00  C01=$c01  C10=$c10  C11=$c11"
 puts "GOLDEN                       :  C00=39   C01=53   C10=17   C11=23"
 if {$c00==39 && $c01==53 && $c10==17 && $c11==23} {
-    puts ">>> BOARD-GEMM-90MHZ: PASS  (16x16 NPU Fmax-94MHz build on real XC7Z020 @ 90.9 MHz matches golden) <<<"
+    puts ">>> BOARD-GEMM-100MHZ: PASS  (16x16 NPU @ 100 MHz on real XC7Z020 matches golden) <<<"
 } else {
-    puts ">>> BOARD-GEMM-90MHZ: MISMATCH <<<"
+    puts ">>> BOARD-GEMM-100MHZ: MISMATCH <<<"
 }
-disconnec
+disconnect
+puts "GEMM-TEST-100-COMPLETE"

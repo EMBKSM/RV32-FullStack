@@ -1,8 +1,12 @@
 # HANDOFF / 상황 저장 — RV32 + 16×16 NPU
 _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 
-## 현재 상태 — 성능(Fmax) 최적화 완료 ✅
-**16×16 NPU SoC Fmax 37 MHz → 94.3 MHz (≈2.5×). MAC 어레이 무수정.** 자세한 건 `docs/PERFORMANCE_FMAX.md`.
+## 현재 상태 — 100 MHz 달성·보드 검증 완료 ✅✅
+**16×16 NPU SoC Fmax 37 → 100 MHz (2.7×), 타이밍 클로징(WNS +0.085ns, 실패 0) + 실보드 100MHz GEMM PASS.** MAC 어레이 무수정. 자세한 건 `docs/PERFORMANCE_FMAX.md`.
+- 마지막 빗장: 시스톨릭 `t`카운터 피드(a_west/b_north)를 레지스터링 → t→PE 경로 분할, 입력 스트림 1클럭 균일 시프트(t_last+1, 비트동일). 이 한 방으로 WNS −0.602→**+0.085ns**, 실패 817→**0**. (코어는 limiter가 아니었음.)
+- 100MHz = FCLK0 ÷10 (`mwr 0xF8000170 0x00100A00`) — MMCM 불필요. 보드 GEMM C=[[39,53],[17,23]] PASS.
+- 비트스트림: `flash/rv32_16x16_100mhz.bit`(100MHz, 보드검증). 백업: `flash/rv32_16x16_94mhz_verified.bit`(v3 94MHz).
+- 테스트: `flash/run_gemm_test_100.bat` (FCLK0=0x00100A00=100MHz). 90.9MHz로 낮추려면 0x00100B00.
 - 병목은 NPU **리드백 경로** 2개였음(MAC 아님): ① 256:1 누산기 먹스, ② requant 32×17 곱셈.
   둘 다 레지스터 파이프라인 단계로 분리(코어 `mem_stall`/`rd_valid` 핸드셰이크 → SW엔 투명, 읽기 5클럭).
   - ① 3단 분리: 임계 26.7→13.3 ns, 37→75 MHz, 빌드 1h17m→8min(혼잡 해소).
@@ -89,4 +93,7 @@ _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 - 보조 스크립트(생성됨): flash/jtag_program_only.tcl(프로그램만), flash/jtag_gemm_test.tcl(GEMM 검증).
 
 ## 주의/환경 (Gotchas)
-- **좀비 프로세스**: 취소한 라우팅의 자식 vivado 프로세스가 "host 불일치"로 Vivado가 못 죽임 → 자기 라우팅 끝
+- **좀비 프로세스**: 취소한 라우팅의 자식 vivado 프로세스가 "host 불일치"로 Vivado가 못 죽임 → 자기 라우팅 끝나면 자동 종료. impl_1은 Reset됨, synth_1(202 DSP)은 Complete 유지.
+- **git 쓰기는 호스트 경유 필요**: sandbox 마운트가 `.git` 내부 파일 삭제 불가(FUSE EPERM). Jun 16자 stale `.git/*.lock`을 호스트에서 지운 뒤 커밋해야 함(=Vivado Tcl `exec cmd /c {bat}` 방식).
+- Vivado: rv32_zynq 프로젝트 열려 있음, synth_1 완료, impl_1 reset 상태.
+- 클럭 다운 시 PL 주변장치(uart_lite/SPI/I2C/PWM Pmod)의 클럭 분주값도 50/30 배율로 바뀜 — NPU 데모엔 무관(PS↔PL AXI는 핸드셰이크라 클럭 무관).
