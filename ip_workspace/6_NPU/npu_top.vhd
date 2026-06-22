@@ -210,4 +210,72 @@ begin
     -- their own registered stage.  Read held by core (re=1,we=0); rd_valid pulses
     -- when rdata_q is valid (5-clk latency, transparent via mem_stall). MAC array
     -- untouched.
-    rd_
+    rd_req  <= sel and re and (not we);
+    col_idx <= to_integer(unsigned(addr(NBITS+1 downto 2)));      -- cw mod N  (column)
+    row_idx <= to_integer(unsigned(addr(CHI downto NBITS+2)));    -- cw / N    (row)
+
+    process(clk)
+        variable mult_s : signed(16 downto 0);
+        variable sh     : integer range 0 to 63;
+        variable rnd    : signed(63 downto 0);
+        variable q8     : signed(7 downto 0);
+    begin
+        if rising_edge(clk) then
+            if rst='1' then
+                rd_cnt <= 0;
+            elsif rd_req='1' then
+                case rd_cnt is
+                    when 0 =>                                    -- s0: column select per row
+                        for r in 0 to N-1 loop
+                            row_words(r) <= acc_flat((r*N+col_idx)*32+31 downto (r*N+col_idx)*32);
+                        end loop;
+                        row_idx_q <= row_idx;
+                        is_c_q    <= is_c;
+                        is_ctrl_q <= is_ctrl;
+                        addr32_q  <= addr(3 downto 2);
+                        rd_cnt    <= 1;
+                    when 1 =>                                    -- s1: row select
+                        acc_sel <= row_words(row_idx_q);
+                        rd_cnt  <= 2;
+                    when 2 =>                                    -- s2: requant multiply (registered -> DSP)
+                        mult_s := signed('0' & cfg(31 downto 16));
+                        prod_q <= resize(signed(acc_sel) * mult_s, 64);
+                        rd_cnt <= 3;
+                    when 3 =>                                    -- s3: round + arithmetic shift (registered)
+                        sh := to_integer(unsigned(cfg(13 downto 8)));
+                        if sh > 0 then
+                            rnd := prod_q + shift_left(to_signed(1, 64), sh-1);
+                        else
+                            rnd := prod_q;
+                        end if;
+                        shf_q <= shift_right(rnd, sh);
+                        rd_cnt <= 4;
+                    when 4 =>                                    -- s4: clip + select raw/requant/status
+                        if    shf_q > 127  then q8 := to_signed(127, 8);
+                        elsif shf_q < -128 then q8 := to_signed(-128, 8);
+                        else  q8 := resize(shf_q, 8);
+                        end if;
+                        if is_c_q='1' then
+                            if cfg(0)='1' then
+                                rdata_q <= std_logic_vector(resize(q8, 32));  -- requant INT8 (sign-ext)
+                            else
+                                rdata_q <= acc_sel;                           -- raw INT32
+                            end if;
+                        elsif is_ctrl_q='1' and addr32_q="01" then
+                            rdata_q <= (1 => done_l, 0 => busy, others => '0');
+                        else
+                            rdata_q <= (others => '0');
+                        end if;
+                        rd_cnt <= 5;
+                    when others =>                               -- 5: valid 1 clk, then rearm
+                        rd_cnt <= 0;
+                end case;
+            else
+                rd_cnt <= 0;                                     -- no access -> rearm
+            end if;
+        end if;
+    end process;
+
+    rdata    <= rdata_q;
+    rd_valid <= '1' when rd_cnt = 5 else '0';
+end rtl;

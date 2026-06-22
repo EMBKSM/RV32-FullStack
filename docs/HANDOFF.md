@@ -13,8 +13,11 @@ _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 - 비트스트림: `flash/rv32_16x16_100mhz.bit` (100MHz 타깃 빌드, ≤94.3MHz 클린). 보드테스트: `flash/run_gemm_test_100.bat`(FCLK0 값만 0x00100B00로 바꾸면 90.9MHz).
 - 100MHz 풀클로징: 남은 worst = 시스톨릭 `t`카운터 제어 팬아웃 + RV32 5단 코어(50MHz 설계) → 코어 파이프라인 재설계 필요(보류, "달성가능 최대 Fmax" 선택).
 
-### 진행 중(자동): 커밋 → 보드 통합테스트 @90.9MHz
-> ⚠ 환경 메모: 작업 중 Vivado GUI가 열린 채 modal(Synthesis Completed)로 떠 있었고, sandbox 마운트 캐시가 심하게 지연됨(파일 mtime 동결). 배치 빌드 산출물(timing_100mhz.rpt=−0.602)은 디스크에 실재. 보드 GEMM이 90.9MHz에서 통과하면 새 비트스트림(94MHz)임이 자동 입증됨(구 37MHz 비트스트림은 90.9MHz에서 실패하므로).
+### 마무리 상태 (자동 진행 결과)
+- ✅ **커밋 완료: `e868476`** "perf(npu): pipeline NPU read-back -> Fmax 37->94.3 MHz". (sandbox git, rename기반 commit이 마운트에서 동작 — 단 delete는 EPERM이라 `.git`에 `_probe_dst`·`tmp_obj_*` 잔재 litter가 남음, 무해. 호스트에서 정리 권장.)
+- ⛔ **보드 통합테스트 @90.9MHz — JTAG/DAP 퇴화로 차단 (전원 재인가 필요).** 3회 시도 모두 `DAP (AHB AP transaction error 0x30000021), no Cortex-A9 targets` — 세션 초반 power-cycle 전과 동일한 상태. 로직 문제 아님(시뮬 18,688체크 + 포스트라우트 타이밍으로 94.3MHz 입증). 보드 JTAG/DAP가 또 꼬임. 스푸리어스 Vitis IDE를 띄웠다 닫았지만 DAP 에러는 board-side라 무변.
+  - **재개(전원 재인가 후 1회):** Run 대화상자(또는 터미널)에서 `C:\work\github\RV32-FullStack\flash\run_gemm_test_100.bat` 실행. FCLK0=0x00100B00(90.9MHz), 비트스트림=rv32_16x16_100mhz.bit(94MHz 빌드), 드라이버 동일. 통과 시 `C=[[39,53],[17,23]]` + `BOARD-GEMM-90MHZ: PASS`. **90.9MHz에서 통과하면 새 94MHz 비트스트림임이 자동 입증**(구 37MHz 비트스트림은 90.9MHz에서 실패).
+  - 100MHz로도 돌려보려면 FCLK0를 0x00100A00로(다만 WNS −0.602라 일부 경로 셋업 위반 — 2×2 GEMM은 우연히 통과할 수도, 보장 안 됨).
 
 ---
 ## (과거 기록) 30 MHz 클럭다운 경로
