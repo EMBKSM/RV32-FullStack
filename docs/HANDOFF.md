@@ -1,8 +1,10 @@
 # HANDOFF / 상황 저장 — RV32 + 16×16 NPU
 _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 
-## 현재 상태 — 100 MHz 달성·보드 검증 완료 ✅✅
-**16×16 NPU SoC Fmax 37 → 100 MHz (2.7×), 타이밍 클로징(WNS +0.085ns, 실패 0) + 실보드 100MHz GEMM PASS.** MAC 어레이 무수정. 자세한 건 `docs/PERFORMANCE_FMAX.md`.
+## 현재 상태 — 100 MHz 클로징 + 106 MHz(MMCM) 보드검증 ✅✅✅
+**16×16 NPU SoC: 37→100 MHz 타이밍 클로징(WNS +0.085, 실패 0) + 실보드 PASS. 추가로 리타이밍+PL MMCM로 106 MHz까지 실보드 GEMM PASS.** MAC 어레이 무수정. 자세한 건 `docs/PERFORMANCE_FMAX.md`.
+- **106MHz**: 합성 리타이밍으로 Fmax 100.9→110.8MHz, FCLK0 단계 안 맞아(÷9=111 초과) → **PL MMCM(clk_wiz) 삽입**: `FCLK0 100 → MMCM → 106MHz PL`. WNS −0.118@106(slow corner, 4EP)지만 실리콘서 GEMM PASS. 비트 `flash/rv32_16x16_mmcm.bit`, 테스트 `flash/run_gemm_test_mmcm.bat`. (BD에 clk_wiz_0 추가됨; 100MHz로 되돌리려면 rv32_16x16_100mhz.bit 사용.)
+- 벽: 리타이밍 후 worst = RV32 코어 load-use 해저드(exmem→ifid, 75% route) ~110MHz가 5단 파이프 근본한계. 블라인드 플로어플랜=중립.
 - 마지막 빗장: 시스톨릭 `t`카운터 피드(a_west/b_north)를 레지스터링 → t→PE 경로 분할, 입력 스트림 1클럭 균일 시프트(t_last+1, 비트동일). 이 한 방으로 WNS −0.602→**+0.085ns**, 실패 817→**0**. (코어는 limiter가 아니었음.)
 - 100MHz = FCLK0 ÷10 (`mwr 0xF8000170 0x00100A00`) — MMCM 불필요. 보드 GEMM C=[[39,53],[17,23]] PASS.
 - 비트스트림: `flash/rv32_16x16_100mhz.bit`(100MHz, 보드검증). 백업: `flash/rv32_16x16_94mhz_verified.bit`(v3 94MHz).

@@ -4,6 +4,22 @@
 **Headline:** Fmax **37 MHz → 100 MHz** (2.7×) with zero change to the MAC array, by pipelining
 three NPU control/read-back paths. **Timing closes at 100 MHz (WNS +0.085 ns, 0 failing endpoints)
 and is verified on real silicon** (GEMM C=[[39,53],[17,23]] correct @ 100 MHz, FCLK0 ÷10).
+**Pushed further to a board-verified 106 MHz** via synthesis retiming + a PL MMCM ("PLL MUX",
+FCLK0 100→106) — also GEMM-PASS on the real chip. Architectural ceiling ≈110.8 MHz (RV32 core
+load-use hazard path).
+
+## Beyond 100 MHz — retiming + PL MMCM (board-verified 106 MHz)
+
+| Step | change | WNS | Fmax | board |
+|------|--------|-----|------|-------|
+| 100 MHz build | (baseline above) | +0.085 @100 | 100.9 MHz | ✅ FCLK0÷10 |
+| + synth retiming (Flow_PerfOptimized_high) | register balancing | −1.029 @125 | **110.8 MHz** | needs MMCM (FCLK0÷9=111 just over) |
+| floorplan (blind Pblock) | — | ~−1.1 @125 | ~109.6 (neutral) | not used |
+| **+ PL MMCM (FCLK0 100→106)** | clk_wiz in BD, PL clock=106 | −0.118 @106 (4 EPs, slow corner) | — | **✅ 106 MHz GEMM PASS on silicon** |
+
+- New wall after retiming = RV32 core **load-use hazard** path (`exmem_reg_write → ifid CE`), ~75% routing — fundamental to the 5-stage pipeline; floorplanning it blind didn't help.
+- 110.8 MHz Fmax can't hit a clean FCLK0 divisor step (÷9=111.1 too fast, ÷10=100 wastes it), so a **PL MMCM** synthesizes the exact 106 MHz the design closes at. The MMCM is the "PLL MUX": `FCLK0 (100 MHz) → clk_wiz → 106 MHz → PL`. Bitstream `flash/rv32_16x16_mmcm.bit`.
+- The −0.118 ns is worst-case slow-corner (only 4 endpoints); typical silicon is faster → 106 MHz runs correctly on the board.
 
 ## Fmax progression
 
