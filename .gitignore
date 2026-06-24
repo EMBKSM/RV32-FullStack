@@ -51,3 +51,8 @@ dfx_runtime.txt
 _*.bat
 _*.txt
 run_*.bat
+
+# ---- session cleanup ----
+_backup_*/
+commit_*_out.txt
+docs/real/

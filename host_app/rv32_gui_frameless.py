@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-rv32_gui.py - Dark "developer console" restyle of the RV32-FullStack GUI.
+rv32_gui_frameless.py - Frameless (Windows) dark "developer console" restyle of the RV32-FullStack GUI.
 
 Same functionality and UART line protocol as rv32_gui.py / rv32_console.py:
   * type RISC-V assembly and see its machine code
@@ -502,6 +502,53 @@ class LedDot(QFrame):
                 f"background:#10161f; border-radius:{self.d//2}px; border:1px solid #28313f;")
 
 
+def _caption_glyphs():
+    fams = set(QFontDatabase.families())
+    for fam in ("Segoe Fluent Icons", "Segoe MDL2 Assets"):
+        if fam in fams:
+            return (fam, "\ue921", "\ue922", "\ue923", "\ue8bb")   # min max restore close
+    return ("", "\u2212", "\u25a1", "\u2750", "\u2715")            # text fallback
+
+
+class WinBtn(QPushButton):
+    """Windows 11 style caption button (flat, full-bleed hover; red for close)."""
+    def __init__(self, glyph, family, danger=False):
+        super().__init__(glyph)
+        self.setFixedSize(46, 34)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setCursor(Qt.ArrowCursor)
+        # font MUST go in the stylesheet: a widget stylesheet overrides setFont(),
+        # so the icon-font glyphs would otherwise never render (blank buttons).
+        ff = ("font-family:'%s'; font-size:10px;" % family) if family else "font-size:14px;"
+        hov = "#e81123" if danger else "rgba(255,255,255,0.09)"
+        prs = "#c20e1f" if danger else "rgba(255,255,255,0.05)"
+        hcl = "#ffffff" if danger else "#e7eef6"
+        self.setStyleSheet(
+            "QPushButton{background:transparent; border:none; border-radius:0; "
+            "padding:0; color:#aeb9c7; " + ff + "}"
+            "QPushButton:hover{background:" + hov + "; color:" + hcl + ";}"
+            "QPushButton:pressed{background:" + prs + "; color:" + hcl + ";}")
+
+
+class DragBar(QWidget):
+    """Frameless title bar: drag to move, double-click to (un)maximize."""
+    def __init__(self, win):
+        super().__init__()
+        self._win = win
+        self._off = None
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton and not self._win.isMaximized():
+            self._off = e.globalPosition().toPoint() - self._win.frameGeometry().topLeft()
+            e.accept()
+    def mouseMoveEvent(self, e):
+        if self._off is not None and (e.buttons() & Qt.LeftButton):
+            self._win.move(e.globalPosition().toPoint() - self._off); e.accept()
+    def mouseReleaseEvent(self, e):
+        self._off = None
+    def mouseDoubleClickEvent(self, e):
+        self._win._toggle_max()
+
+
 class MainWindow(QMainWindow):
     reqConnect    = Signal(str, int)
     reqDisconnect = Signal()
@@ -515,6 +562,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
         self.setWindowTitle("RV32-FullStack  —  FPGA RISC-V Console")
         self.resize(1240, 820)
         self.setMinimumSize(1060, 680)
@@ -561,7 +609,7 @@ class MainWindow(QMainWindow):
     # ---------- UI ----------
     def _build_ui(self):
         # ===== top title + connection bar =====
-        bar = QHBoxLayout(); bar.setContentsMargins(16, 10, 14, 10); bar.setSpacing(10)
+        bar = QHBoxLayout(); bar.setContentsMargins(14, 0, 0, 0); bar.setSpacing(10)
         title = QLabel("RV32-FullStack  —  FPGA RISC-V Console")
         title.setStyleSheet(f"color:#8a98ab; font-family:'{MONO_FAMILY}'; font-size:13px;")
         bar.addWidget(title)
@@ -582,7 +630,16 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.btn_refresh)
         bar.addWidget(tiny("BAUD")); bar.addWidget(self.baud_box)
         bar.addWidget(self.btn_conn); bar.addWidget(self.lbl_conn)
-        bar_w = QWidget(); bar_w.setStyleSheet(f"background:{C_BAR}; border-bottom:1px solid {C_BORDER};")
+        bar.addSpacing(8)
+        capfam, g_min, g_max, g_rs, g_cl = _caption_glyphs()
+        self._g_max, self._g_rs = g_max, g_rs
+        cap = QHBoxLayout(); cap.setSpacing(0); cap.setContentsMargins(0, 0, 0, 0)
+        self.btn_min = WinBtn(g_min, capfam);              self.btn_min.clicked.connect(self.showMinimized)
+        self.btn_max = WinBtn(g_max, capfam);              self.btn_max.clicked.connect(self._toggle_max)
+        self.btn_cls = WinBtn(g_cl,  capfam, danger=True); self.btn_cls.clicked.connect(self.close)
+        for b in (self.btn_min, self.btn_max, self.btn_cls): cap.addWidget(b)
+        bar.addLayout(cap)
+        bar_w = DragBar(self); bar_w.setStyleSheet(f"background:{C_BAR}; border-bottom:1px solid {C_BORDER};")
         bar_w.setLayout(bar)
 
         # ===== left: editor + buttons + machine code =====
@@ -654,6 +711,7 @@ class MainWindow(QMainWindow):
         cv.addWidget(bar_w); cv.addWidget(outer, 1)
         self.setCentralWidget(central)
 
+        self.statusBar().setSizeGripEnabled(True)
         self.statusBar().showMessage("Ready. Connect to the board, type assembly, press Run.")
         self._live_assemble()
         self._set_online(False)
@@ -941,6 +999,12 @@ class MainWindow(QMainWindow):
         self.btn_conn.setProperty("on", "true" if on else "false")
         self.btn_conn.style().unpolish(self.btn_conn); self.btn_conn.style().polish(self.btn_conn)
 
+    def _toggle_max(self):
+        if self.isMaximized():
+            self.showNormal();    self.btn_max.setText(self._g_max)
+        else:
+            self.showMaximized(); self.btn_max.setText(self._g_rs)
+
     def closeEvent(self, e):
         try:
             self.poll_timer.stop()
@@ -955,23 +1019,16 @@ MONO = None
 MONO_FAMILY = "monospace"
 
 
-def _apply_dark_titlebar(win):
-    """Native Windows frame, but with a dark title bar (Win10 20H1+/Win11) so the
-    window chrome matches the dark app. Native controls / resize / snap / shadow stay."""
+def _round_corners(win):
+    """Win11 rounded corners for a frameless window (cosmetic; safe no-op elsewhere)."""
     if not sys.platform.startswith("win"):
         return
     try:
         import ctypes
         hwnd = ctypes.c_void_p(int(win.winId()))
-        dwm = ctypes.windll.dwmapi
-        on = ctypes.c_int(1)
-        for attr in (20, 19):                        # DWMWA_USE_IMMERSIVE_DARK_MODE
-            if dwm.DwmSetWindowAttribute(hwnd, ctypes.c_int(attr),
-                    ctypes.byref(on), ctypes.c_uint(ctypes.sizeof(on))) == 0:
-                break
-        rnd = ctypes.c_int(2)                         # DWMWA_WINDOW_CORNER_PREFERENCE -> round
-        dwm.DwmSetWindowAttribute(hwnd, ctypes.c_int(33),
-                ctypes.byref(rnd), ctypes.c_uint(ctypes.sizeof(rnd)))
+        pref = ctypes.c_int(2)        # DWMWA_WINDOW_CORNER_PREFERENCE(33) -> DWMWCP_ROUND(2)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, ctypes.c_int(33), ctypes.byref(pref), ctypes.c_uint(4))
     except Exception:
         pass
 
@@ -988,7 +1045,7 @@ def main():
         hair=C_HAIR, text=C_TEXT, dim=C_DIM, dim2=C_DIM2, green=C_GREEN, blue=C_BLUE,
         mono=mono_family, sans=sans_family))
     win = MainWindow()
-    _apply_dark_titlebar(win)
+    _round_corners(win)
     win.show()
     sys.exit(app.exec())
 
