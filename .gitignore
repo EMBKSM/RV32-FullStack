@@ -56,3 +56,9 @@ run_*.bat
 _backup_*/
 commit_*_out.txt
 docs/real/
+
+# session scratch (tracked junk)
+commit_*.txt
+cleanup.bat
+_test_*.py
+flash/_*.tcl
