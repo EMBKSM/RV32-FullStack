@@ -1,0 +1,70 @@
+=== xvhdl (npu_pe -> npu_array -> npu_top -> npu_top16) === 
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_pe.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_pe'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_array.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_array'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_top'
+INFO: [VRFC 10-163] Analyzing VHDL file "C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top16.vhd" into library work
+INFO: [VRFC 10-3107] analyzing entity 'npu_top16'
+[xvhdl exit=0] 
+=== xvlog === 
+INFO: [VRFC 10-2263] Analyzing SystemVerilog file "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" into library work
+INFO: [VRFC 10-311] analyzing module tb_npu_scale16
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:97]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:109]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:133]
+WARNING: [VRFC 10-3824] variable 'K' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:141]
+WARNING: [VRFC 10-3824] variable 'Kr' must explicitly be declared as automatic or static [C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv:149]
+[xvlog exit=0] 
+=== xelab === 
+Vivado Simulator v2025.2
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+Running: C:/Xilinx/2025.2/Vivado/bin/unwrapped/win64.o/xelab.exe tb_npu_scale16 -s scaletb 
+Multi-threading is on. Using 14 slave threads.
+Starting static elaboration
+Pass Through NonSizing Optimizer
+Completed static elaboration
+Starting simulation data flow analysis
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling package std.standard
+Compiling package std.textio
+Compiling package ieee.std_logic_1164
+Compiling package ieee.numeric_std
+Compiling architecture rtl of entity work.npu_pe [\npu_pe(1,3)\]
+Compiling architecture rtl of entity work.npu_pe [\npu_pe(dsp_use="no")(1,2)\]
+Compiling architecture rtl of entity work.npu_array [\npu_array(n=16,dsp_budget=200)\]
+Compiling architecture rtl of entity work.npu_top [\npu_top(n=16,aw=14,dsp_budget=2...]
+Compiling architecture rtl of entity work.npu_top16 [npu_top16_default]
+Compiling module work.tb_npu_scale16
+Built simulation snapshot scaletb
+[xelab exit=0] 
+=== xsim (run) === 
+
+****** xsim v2025.2 (64-bit)
+  **** SW Build 6299465 on Fri Nov 14 19:35:11 GMT 2025
+  **** IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+  **** SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+  **** Start of session at: Tue Jun 23 08:19:09 2026
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source xsim.dir/scaletb/xsim_script.tcl
+# xsim {scaletb} -autoloadwcfg -runall
+Time resolution is 1 ps
+run -all
+=== NPU 16x16 scale-up functional verification (N=16, 256 PEs) ===
+  [axis1] K x INT8 extremes : done
+  [axis2] spatial corners+middle of 16x16 (256-PE addressing) : done
+  [axis3] accumulate mode (clr_acc=0, K-tiling) : done
+  [axis4] random regression : 40 back-to-back GEMMs : done
+  [axis5] requantize (clip + OFF->raw + random) : done
+=== checks=18688 errors=0 ===
+RESULT: ALL PASS - 16x16 NPU matches golden (GEMM+spatial+accum+random+requant)
+$finish called at time : 2556060 ns : File "C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv" Line 160
+exit
+INFO: [Common 17-206] Exiting xsim at Tue Jun 23 08:19:15 2026...
+[xsim exit=0] 
+ALL-DONE 

@@ -1,6 +1,0 @@
-the_ROM_image:
-{
-	[bootloader] C:/work/github/RV32-FullStack/flash/ws/fsbl_fix/Debug/fsbl_fix.elf
-	C:/work/github/RV32-FullStack/vivado_zynq/rv32_zynq.runs/impl_1/rv32_top_wrapper.bit
-	C:/work/github/RV32-FullStack/rv_ps/rv_firmware/build/rv_firmware.elf
-}

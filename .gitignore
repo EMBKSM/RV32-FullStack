@@ -62,3 +62,17 @@ commit_*.txt
 cleanup.bat
 _test_*.py
 flash/_*.tcl
+
+# ---- standardized-layout reorg: regenerable/generated (kept on disk, untracked) ----
+/ip_repo/
+/ip_build/
+/rv_pl/
+/verification/
+/flash/
+*.xsa
+*.rpt
+*.jou
+*.pb
+*.wdb
+**/xsim.dir/
+_capdir/

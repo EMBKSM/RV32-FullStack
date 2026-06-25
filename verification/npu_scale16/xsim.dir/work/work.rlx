@@ -1,9 +1,0 @@
-0.7
-2020.2
-Nov 14 2025
-19:37:27
-C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_array.vhd,1781790432,vhdl,C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top.vhd,,,npu_array,,,,,,,,
-C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_pe.vhd,1781790428,vhdl,C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_array.vhd,,,npu_pe,,,,,,,,
-C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top.vhd,1782170278,vhdl,C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top16.vhd,,,npu_top,,,,,,,,
-C:/work/github/RV32-FullStack/ip_workspace/6_NPU/npu_top16.vhd,1782140810,vhdl,,,,npu_top16,,,,,,,,
-C:/work/github/RV32-FullStack/verification/npu_scale16/tb_npu_scale16.sv,1782140929,systemVerilog,,,,tb_npu_scale16,,,,,,,,

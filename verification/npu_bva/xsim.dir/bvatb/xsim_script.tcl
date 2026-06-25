@@ -1,1 +1,0 @@
-xsim {bvatb} -autoloadwcfg -runall

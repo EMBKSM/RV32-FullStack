@@ -1,1 +1,0 @@
-"tb_rv32_soc_npu" -s "socnpu" 

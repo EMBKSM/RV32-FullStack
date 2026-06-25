@@ -1,1 +1,0 @@
-"tb_npu_regress" -s "regtb" 
