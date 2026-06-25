@@ -83,10 +83,15 @@ architecture Behavioral of mmio_bridge is
     signal npu_rd       : std_logic_vector(31 downto 0);
     signal npu_rd_valid : std_logic;
     signal npu_stall    : std_logic;
+    -- GPU (SIMT-lite vector coprocessor window @ 0x4xxx_xxxx)
+    signal is_gpu       : std_logic;
+    signal gpu_rd       : std_logic_vector(31 downto 0);
+    signal gpu_rd_valid : std_logic;
 begin
     -- MMIO region = 0x1xxx_xxxx
     is_mmio <= '1' when c_addr(31 downto 28) = x"1" else '0';
     is_npu  <= '1' when c_addr(31 downto 28) = x"3" else '0';
+    is_gpu  <= '1' when c_addr(31 downto 28) = x"4" else '0';
     blk     <= c_addr(7 downto 5);
     regw    <= c_addr(4 downto 2);
 
@@ -94,8 +99,8 @@ begin
     d_addr  <= c_addr;
     d_wdata <= c_wdata;
     d_wstrb <= c_wstrb;
-    d_we    <= c_we and not is_mmio and not is_npu;
-    d_re    <= c_re and not is_mmio and not is_npu;
+    d_we    <= c_we and not is_mmio and not is_npu and not is_gpu;
+    d_re    <= c_re and not is_mmio and not is_npu and not is_gpu;
 
     -- block selects
     sel_sys  <= '1' when is_mmio='1' and blk="000" else '0';
@@ -184,6 +189,14 @@ begin
                   addr=>c_addr(13 downto 0), wdata=>c_wdata, wstrb=>c_wstrb,
                   re=>c_re, rdata=>npu_rd, rd_valid=>npu_rd_valid);
 
+    -- GPU SIMT-lite coprocessor (uncached, single-cycle slave @ 0x4000_0000)
+    -- 8-lane vector engine; 64 KiB window -> addr[15:0]. Lanes LUT-based
+    -- (use_dsp="no") so all DSP48 stay with the NPU.
+    u_gpu : entity work.gpu_top
+        port map (clk=>clk, rst=>reset, sel=>is_gpu, we=>c_we, re=>c_re,
+                  addr=>c_addr(15 downto 0), wdata=>c_wdata,
+                  rdata=>gpu_rd, rd_valid=>gpu_rd_valid);
+
     -- NPU reads are now pipelined (3-cycle): stall the core until rd_valid.
     -- (The 256:1 accumulator read mux was split into registered stages to close
     --  timing; writes and MMIO stay single-cycle.)
@@ -191,7 +204,9 @@ begin
 
     -- back to core: MMIO single-cycle; NPU follows its read handshake; else cache
     c_rdata <= npu_rd   when is_npu  = '1' else
+               gpu_rd   when is_gpu  = '1' else
                mmio_rd  when is_mmio = '1' else d_rdata;
     c_stall <= npu_stall when is_npu  = '1' else
+               '0'       when is_gpu  = '1' else
                '0'       when is_mmio = '1' else d_stall;
 end Behavioral;

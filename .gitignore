@@ -76,3 +76,7 @@ flash/_*.tcl
 *.wdb
 **/xsim.dir/
 _capdir/
+
+# ---- GPU sim build products (regenerable from gpu_model.c) ----
+sim/gpu/gpu_model
+sim/gpu/*.mem

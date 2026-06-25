@@ -5,10 +5,10 @@ Zynq-7000(Zybo Z7-20) FPGA에 올리고, **PC에서 RISC-V 어셈블리를 입�
 CPU가 실행 → 결과(레지스터 변화)를 회신**하는 완전한 시스템.
 
 ```
-[PC] host_app/rv32_console.py   (어셈블러 + UART 콘솔)
+[PC] sw/host/rv32_console.py   (어셈블러 + UART 콘솔)
    │  "add x3,x1,x2" → 기계어 → 프로토콜
    ▼ USB-UART 115200 8N1
-[Zynq PS / ARM]  ps_firmware/rv32_monitor.c   (명령 파서 + AXI-Lite 드라이버)
+[Zynq PS / ARM]  sw/firmware/rv32_monitor.c   (명령 파서 + AXI-Lite 드라이버)
    │  AXI4-Lite @ 0x4000_0000
    ▼
 [Zynq PL]  rv32_platform   =   RV32 CPU + I$/D$ + 데이터/명령 RAM + MMIO(LED/SW/BTN)
@@ -20,21 +20,27 @@ CPU가 실행 → 결과(레지스터 변화)를 회신**하는 완전한 시스
 
 ## 1. 저장소 구조
 ```
-ip_workspace/          RTL (블록별) + 단위 TB(tb_*.sv) + acceptance_tests.md
-  0_IF 1_ID 2_EX 3_Mem 4_WB common 5_Platform
-  rv32_core.vhd        CPU 코어(파이프라인)
-  rv32_soc.vhd         시뮬용 SoC(코어+I$/D$+거동메모리)
-  5_Platform/          mmio_bridge, rv32_ctrl_axi, rv32_platform (합성용 PL 탑)
-bd_assembly/           BD 손배선용 glue RTL(mux2_32 등)
-verification/          통합 TB(tb_rv32_soc/ tb_rv32_platform/ tb_ps_regress ...) + Python 모델
-constraints/           zybo_z7_20_gpio.xdc  (LED/SW/BTN 핀)
-scripts/               IP 패키징 / BD 빌드 / 비트스트림 / 회귀 tcl·bat (+ README)
-ps_firmware/           Zynq PS 베어메탈 모니터(C) + 빌드 안내
-host_app/              PC 콘솔(어셈블러+UART, Python) + 안내
-docs/                  VERIFICATION.md(통합 검증) + 설계 문서(SOC_PLATFORM/BD_*)
-ip_repo/               패키징된 user IP
-(gitignored)           rv_pl/ vivado_zynq/ ip_build/  (스크립트로 재생성)
+rtl/                   RTL (VHDL, 단일 소스 of truth)
+  core/                5-stage 파이프라인: pc·icache·id·ex·mem·wb + rv32_core.vhd
+  soc/                 mmio_bridge·rv32_ctrl_axi·rv32_platform(합성 PL 탑)·rv32_soc(시뮬 탑)
+  npu/                 16×16 INT8 시스토릭 GEMM 가속기  (@ 0x3xxx_xxxx)
+  gpu/                 SIMT-lite 벡터 코프로세서        (@ 0x4xxx_xxxx)   ← 신규
+  common/              공용 유틸
+sim/                   통합/단위 TB(tb_*.sv·.vhd) + Python 모델 + .f 리스트
+  gpu/                 GPU C 골든모델(gpu_model.c) + tb_gpu.vhd + run_gpu.bat
+fpga/
+  scripts/             IP 패키징 / BD 빌드 / 비트스트림 / 회귀 tcl
+  constraints/         zybo_z7_20_*.xdc  (LED/SW/BTN, Pmod 핀)
+  flash/               부트/JTAG 스크립트
+sw/
+  firmware/            Zynq PS 베어메탈 모니터(C)
+  host/                PC 콘솔/GUI(어셈블러+UART, Python)
+docs/                  설계·검증 문서(GPU_DESIGN.md 포함) + 다이어그램
+archive/legacy_bd/     구 BD 손배선 glue RTL(참고용)
+(gitignored, 재생성)   ip_repo/ ip_build/ rv_pl/ vivado_zynq/
 ```
+> 생성물(`ip_repo` 등)은 추적하지 않음 — 신규 클론은 빌드 전
+> `fpga/scripts/package_platform_ip.tcl`로 `ip_repo`를 재생성한다.
 
 ---
 
@@ -49,7 +55,7 @@ ip_repo/               패키징된 user IP
 ## 3. 시뮬레이션 / 검증
 ### 3.1 Python 모델 회귀 (보드·Vivado 불필요)
 ```
-cd verification
+cd sim
 python run_ifwb_core.py --programs 4000     # 파이프라인 모델 vs ISS (AT-01..30 + 랜덤)
 python run_pipeline50.py                    # 50-iter 회귀
 python test_rv32.py                         # 10-iter 회귀
@@ -59,7 +65,8 @@ python verify_spec.py ; python verify_docs.py
 python run_ifwb_core.py --bug forward       # forward|hazard|branch|x0 → "FAULT CAUGHT"
 ```
 ### 3.2 HDL(xsim) 회귀
-- 일괄: Vivado tools PATH 잡힌 cmd에서 `scripts\run_all_xsim.bat` (전 VHDL 컴파일 후 모든 SV TB 실행).
+- 가속기: `sim\gpu\run_gpu.bat` (GPU SIMT-lite 코프로세서 → `==== GPU TB: ALL TESTS PASS ====`).
+  설계는 `docs/GPU_DESIGN.md`, C 골든모델은 `sim/gpu/gpu_model.c`.
 - 개별: Vivado 프로젝트에서 sim top 지정 후 `launch_simulation; run all`.
   - `tb_rv32_soc`     — 풀 SoC(데이터패스+D$+CSR/트랩+FENCE.I+AT-30 랜덤)
   - `tb_rv32_platform`— 플랫폼(PS 방식 load/run/step + MMIO)
