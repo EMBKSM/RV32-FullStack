@@ -83,3 +83,7 @@ sim/gpu/*.mem
 
 sim/multicore/mc_model
 sim/multicore/golden_mc.mem
+
+# keep the sim launcher scripts (the run_*.bat rule above would hide them)
+!sim/gpu/run_gpu.bat
+!sim/multicore/run_dual.bat
