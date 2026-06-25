@@ -80,3 +80,6 @@ _capdir/
 # ---- GPU sim build products (regenerable from gpu_model.c) ----
 sim/gpu/gpu_model
 sim/gpu/*.mem
+
+sim/multicore/mc_model
+sim/multicore/golden_mc.mem

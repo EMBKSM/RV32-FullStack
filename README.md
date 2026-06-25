@@ -67,6 +67,8 @@ python run_ifwb_core.py --bug forward       # forward|hazard|branch|x0 → "FAUL
 ### 3.2 HDL(xsim) 회귀
 - 가속기: `sim\gpu\run_gpu.bat` (GPU SIMT-lite 코프로세서 → `==== GPU TB: ALL TESTS PASS ====`).
   설계는 `docs/GPU_DESIGN.md`, C 골든모델은 `sim/gpu/gpu_model.c`.
+- 멀티코어: `sim\multicore\run_dual.bat` (듀얼코어 RV32 SPMD → `==== DUAL-CORE TB: ALL PASS ====`).
+  설계는 `docs/MULTICORE_DESIGN.md`, C 골든모델은 `sim/multicore/mc_model.c`.
 - 개별: Vivado 프로젝트에서 sim top 지정 후 `launch_simulation; run all`.
   - `tb_rv32_soc`     — 풀 SoC(데이터패스+D$+CSR/트랩+FENCE.I+AT-30 랜덤)
   - `tb_rv32_platform`— 플랫폼(PS 방식 load/run/step + MMIO)
