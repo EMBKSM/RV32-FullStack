@@ -141,7 +141,29 @@ array for arbitrary length.
    end-to-end through the MMIO window, mirrored by the existing NPU SoC testbench.
 5. Compare GPU vs scalar-core cycle counts to quantify the speedup.
 
-## 9. Parameters
+## 9. Synthesis notes (OOC synth_design, xc7z020clg400-1)
+
+Out-of-context synthesis surfaced two places where the single-cycle,
+*combinational-read* model (great for simulation) is hostile to synthesis:
+
+- **Multiplier.** A full `32x32` LUT multiply per lane (`use_dsp="no"`, the first
+  cut to "preserve DSPs") was impractical: ~16 min synth and ~16 k LUT for the 8
+  lanes. Reworked to a **16x16 -> 32 signed multiply on one DSP48E1 per lane**
+  (8 lanes -> **8 DSP**, fits the ~18 free after the NPU): "Finished Synthesize"
+  drops to **~24 s**. (16-bit operands are exact for the INT8/INT16-range kernels
+  this GPU pairs with; the C golden model matches.)
+- **Scratchpad / register files.** The async-read banked scratchpad infers as
+  registers, not BRAM (`8 banks x 256 x 32 = 65 536` FF), which both bloats area
+  and slows optimization. A synthesizable build should back the scratchpad and
+  imem with **BRAM (synchronous read)** and pipeline the lanes behind `mem_stall`
+  (mirroring how `rv32_core` uses its caches) -- a deliberate next step, kept out
+  of this sim-first version for clarity.
+
+Net: the design is functionally correct and simulation-verified (xsim, all three
+kernels pass); making it *implementation*-efficient is a memory-architecture
+refinement (DSP multiply done; BRAM-backed memories next).
+
+## 10. Parameters
 
 `N_LANES` (default 8), `VREGS` (8), `SREGS` (8), `IMEM_DEPTH` (256), `SP_WORDS_PER_BANK`
 (256). All generics on `gpu_top`, so the lane count can be tuned to whatever the

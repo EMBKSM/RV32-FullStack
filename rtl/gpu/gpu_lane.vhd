@@ -1,8 +1,10 @@
 -- =====================================================================
--- gpu_lane.vhd  -  one SIMT lane: 32-bit integer ALU + LUT multiplier.
+-- gpu_lane.vhd  -  one SIMT lane: 32-bit integer ALU + 16x16 DSP multiplier.
 -- Purely combinational; the core supplies operands and writes results back
--- under the per-lane mask. Multiplier forced to fabric (use_dsp="no") so all
--- DSP48 blocks stay available to the NPU.
+-- under the per-lane mask. The multiply is a 16x16->32 signed product mapped
+-- to one DSP48E1 per lane (8 lanes -> 8 DSP), fitting the ~18 DSP left free
+-- after the NPU. (A full 32x32 *LUT* multiply per lane -- the earlier
+-- use_dsp="no" choice -- proved impractical: ~16k LUT and very slow synth.)
 -- =====================================================================
 library ieee;
 use ieee.std_logic_1164.all;
@@ -21,11 +23,11 @@ entity gpu_lane is
 end entity gpu_lane;
 
 architecture rtl of gpu_lane is
-    signal prod : signed(63 downto 0);
+    signal prod : signed(31 downto 0);            -- 16x16 -> 32: one DSP48E1 per lane
     attribute use_dsp : string;
-    attribute use_dsp of prod : signal is "no";
+    attribute use_dsp of prod : signal is "yes";  -- 8 lanes -> 8 DSP (fits the 18 free)
 begin
-    prod <= signed(a) * signed(b);
+    prod <= signed(a(15 downto 0)) * signed(b(15 downto 0));
 
     process(op, a, b, c, prod)
         variable sa, sb : signed(31 downto 0);
@@ -49,8 +51,8 @@ begin
             when A_SRA  => res := std_logic_vector(shift_right(sa, sh));
             when A_MIN  => if sa < sb then res := a; else res := b; end if;
             when A_MAX  => if sa > sb then res := a; else res := b; end if;
-            when A_MUL  => res := std_logic_vector(prod(31 downto 0));
-            when A_MAC  => res := std_logic_vector(prod(31 downto 0) + signed(c));
+            when A_MUL  => res := std_logic_vector(prod);
+            when A_MAC  => res := std_logic_vector(prod + signed(c));
             when A_SLT  => if sa <  sb then fl := '1'; end if;
                           res := (0 => fl, others => '0');
             when A_SEQ  => if  a =  b  then fl := '1'; end if;

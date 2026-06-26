@@ -33,8 +33,8 @@ static int32_t alu(int op,int32_t a,int32_t b,int32_t c){
       case VSRL:return (int32_t)(ua>>sh);
       case VSRA:return a>>sh;
       case VMIN:return a<b?a:b; case VMAX:return a>b?a:b;
-      case VMUL:return (int32_t)((int64_t)a*b);
-      case VMAC:return (int32_t)((int64_t)a*b + c);
+      case VMUL:return (int32_t)((int16_t)a*(int16_t)b);       /* 16x16 -> 32 (1 DSP/lane) */
+      case VMAC:return (int32_t)((int16_t)a*(int16_t)b + c);
     }
     return 0;
 }
