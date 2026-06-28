@@ -17,10 +17,13 @@ Post-implementation utilization on the XC7Z020 leaves:
 | BRAM36 | 12 / 140 | ~128 | abundant |
 | DSP48 | 202 / 220 | **18** | the NPU ate them |
 
-So the design rule is simple: **lanes are LUT-based** (ALU *and* multiplier built
-from fabric, `use_dsp = "no"`), keeping all 18 remaining DSPs free. With `N = 8`
-lanes the estimate is ~12–15 k LUT / ~4 k FF / a few BRAM / 0 DSP — a comfortable
-fit that still leaves room for the multicore stage.
+The first cut made the lanes fully LUT-based (`use_dsp="no"`) to keep all 18 free
+DSPs untouched, but a 32×32 LUT multiply per lane proved impractical (see §9). The
+shipped design instead uses **one DSP48E1 per lane for a 16×16→32 multiply** (8
+lanes × {VMUL, VMAC} = 16 DSP), which still leaves NPU headroom intact. Actual
+post-implementation footprint (OOC, `xc7z020-1`, 100 MHz, **timing MET** — see §11):
+**6,657 LUT (12.5 %) · 3,148 FF (3 %) · 8 RAMB18 (2.9 %) · 16 DSP (7.3 %)** — small,
+with ample room left for the multicore stage.
 
 ## 2. Execution model
 
@@ -160,11 +163,30 @@ Out-of-context synthesis surfaced two places where the single-cycle,
   of this sim-first version for clarity.
 
 Net: the design is functionally correct and simulation-verified (xsim, all three
-kernels pass); making it *implementation*-efficient is a memory-architecture
-refinement (DSP multiply done; BRAM-backed memories next).
+kernels pass). Both refinements flagged here are now **done** — DSP multiply and a
+BRAM-backed scratchpad — and the datapath was pipelined to close timing (see §11).
 
 ## 10. Parameters
 
 `N_LANES` (default 8), `VREGS` (8), `SREGS` (8), `IMEM_DEPTH` (256), `SP_WORDS_PER_BANK`
 (256). All generics on `gpu_top`, so the lane count can be tuned to whatever the
 post-place DSP/LUT budget allows without touching the rest of the SoC.
+
+## 11. Timing closure (OOC, xc7z020-1 @ 100 MHz)
+
+The sim-first core was made implementation-ready and **closed at 100 MHz
+(WNS +0.032 ns, 0 failing endpoints of 7,825)**. Out-of-context flow:
+`synth_design -retiming` → `place/route -directive Explore` → `phys_opt_design`
+(`sim/gpu/synth_impl_gpu.tcl`); 10 ns constraint in `sim/gpu/gpu_ooc.xdc`.
+
+Three structural changes drove WNS from −3.975 ns to met:
+
+| Change | WNS | What broke / fixed |
+|---|---|---|
+| BRAM scratchpad + 16×16 DSP multiply (single-cycle exec) | −3.975 | critical path `pc→imem→operand→combinational DSP (3.84 ns)→mux→vreg` |
+| **Pipeline the vector ALU** — 3-cycle `S_RUN→S_EX→S_WB`, DSP isolated in its own cycle; `synth -retiming` then pulls the operand regs into the DSP `A/B/CREG` | −0.338 | DSP multiply no longer in a combinational cone; failing EPs 4237→64 |
+| **Register the scratchpad row index** (`ld_row_r`) — VLD becomes 3-cycle / VST 2-cycle so the BRAM address port sits off the `pc→imem→scalar-adder` path | **+0.032** | the post-pipeline limiter (`pc→imem→sreg+imm→BRAM addr`) is split; final limiter is now the `SADDI` scalar adder, met |
+
+Latency cost: simple ops 1 cycle, vector ALU 3, VLD 3, VST 2 — throughput is still
+`N=8` elements per vector op, retiring one op every few cycles (DONE-polled, so the
+CPU driver and the C golden model are unaffected). Footprint: see §1.

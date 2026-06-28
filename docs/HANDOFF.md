@@ -1,6 +1,8 @@
 # HANDOFF / 상황 저장 — RV32 + 16×16 NPU
 _저장 시점: 2026-06-23 (Fmax 최적화 완료)_
 
+> **▶ 최신 세션(2026-06-26): GPU + 멀티코어 + GPU 타이밍 클로징 → `docs/HANDOFF_GPU_TIMING.md` 참고.** 이 문서는 그 이전 NPU Fmax 작업 기록.
+
 ## 현재 상태 — 100 MHz 클로징 + 106 MHz(MMCM) 보드검증 ✅✅✅
 **16×16 NPU SoC: 37→100 MHz 타이밍 클로징(WNS +0.085, 실패 0) + 실보드 PASS. 추가로 리타이밍+PL MMCM로 106 MHz까지 실보드 GEMM PASS.** MAC 어레이 무수정. 자세한 건 `docs/PERFORMANCE_FMAX.md`.
 - **106MHz**: 합성 리타이밍으로 Fmax 100.9→110.8MHz, FCLK0 단계 안 맞아(÷9=111 초과) → **PL MMCM(clk_wiz) 삽입**: `FCLK0 100 → MMCM → 106MHz PL`. WNS −0.118@106(slow corner, 4EP)지만 실리콘서 GEMM PASS. 비트 `flash/rv32_16x16_mmcm.bit`, 테스트 `flash/run_gemm_test_mmcm.bat`. (BD에 clk_wiz_0 추가됨; 100MHz로 되돌리려면 rv32_16x16_100mhz.bit 사용.)

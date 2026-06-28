@@ -1,8 +1,20 @@
 -- =====================================================================
 -- gpu_core.vhd  -  SIMT-lite engine: one PC, lockstep N-lane datapath,
--- per-lane predicate mask. Single-issue, single-cycle execute (combinational
--- regfile / scratchpad reads, registered writes) -> 1 instruction/cycle,
--- N elements retired per vector op. See docs/GPU_DESIGN.md.
+-- per-lane predicate mask.  Implementation/timing-ready.
+--
+-- Memory: scratchpad = 8 synchronous-read/write banks -> block RAM (1-cycle
+-- read latency absorbed by S_VLD2). imem/vreg = small register/distributed
+-- arrays (combinational read).
+--
+-- Datapath pipeline (to close timing): the long path
+--   imem -> operand -> DSP multiply -> result-mux -> vreg
+-- is split so the DSP sits in its own clock cycle. Vector ALU ops take 3
+-- cycles -- S_RUN (decode, latch operands) -> S_EX (lane ALU/DSP -> result
+-- reg) -> S_WB (write vreg/mask). Simple ops (move/scalar/mask/branch/VST)
+-- stay 1 cycle; VLD is 3 / VST is 2 -- the scratchpad
+-- row index is registered (ld_row_r) so the BRAM address port sits off the
+-- fetch->decode->scalar-adder path (the post-pipeline critical path).
+-- See docs/GPU_DESIGN.md.
 -- =====================================================================
 library ieee;
 use ieee.std_logic_1164.all;
@@ -19,20 +31,17 @@ entity gpu_core is
     );
     port (
         clk, rst  : in  std_logic;
-        start     : in  std_logic;                       -- 1-cycle launch pulse
+        start     : in  std_logic;
         busy      : out std_logic;
         done      : out std_logic;
-        -- instruction memory write (CPU, only while idle)
         imem_we   : in  std_logic;
         imem_addr : in  std_logic_vector(15 downto 0);
         imem_wd   : in  std_logic_vector(31 downto 0);
-        -- scalar-argument preset (CPU)
         sarg_we   : in  std_logic;
         sarg_idx  : in  std_logic_vector(2 downto 0);
         sarg_data : in  std_logic_vector(31 downto 0);
-        -- scratchpad flat access (CPU, only while idle)
         sp_we     : in  std_logic;
-        sp_addr   : in  std_logic_vector(15 downto 0);   -- flat element index
+        sp_addr   : in  std_logic_vector(15 downto 0);
         sp_wd     : in  std_logic_vector(31 downto 0);
         sp_rd     : out std_logic_vector(31 downto 0)
     );
@@ -41,32 +50,41 @@ end entity gpu_core;
 architecture rtl of gpu_core is
 
     type vregfile_t is array (0 to VREGS-1) of word_array(0 to LANES-1);
-    type bankmem_t  is array (0 to LANES-1) of word_array(0 to BANK_D-1);
 
     signal vreg : vregfile_t := (others => (others => (others => '0')));
     signal sreg : word_array(0 to SREGS-1) := (others => (others => '0'));
     signal imem : word_array(0 to IMEM_D-1) := (others => (others => '0'));
-    signal bank : bankmem_t := (others => (others => (others => '0')));
+    signal bdin : word_array(0 to LANES-1);
     signal mask : std_logic_vector(0 to LANES-1) := (others => '1');
 
-    type state_t is (S_IDLE, S_RUN, S_DONE);
+    type state_t is (S_IDLE, S_RUN, S_EX, S_WB, S_VLD2, S_VLD3, S_VST2, S_DONE);
     signal state : state_t := S_IDLE;
     signal pc    : integer range 0 to IMEM_D-1 := 0;
 
-    -- decoded current instruction (combinational)
+    -- decode (combinational from imem(pc))
     signal instr : std_logic_vector(31 downto 0);
     signal op    : opcode_t;
     signal di, ai, bi : integer range 0 to 7;
     signal imm_s : signed(31 downto 0);
-
-    -- lane datapath
     signal lane_op : aluop_t;
-    signal opa, opb, opc, ly : word_array(0 to LANES-1);
-    signal lflag : std_logic_vector(0 to LANES-1);
 
-    -- scratchpad addressing
+    -- pipeline registers (operands + control captured in S_RUN, used in S_EX/S_WB)
+    signal opa_r, opb_r, opc_r, res_r : word_array(0 to LANES-1);
+    signal ly    : word_array(0 to LANES-1);
+    signal lflag, flag_r, mask_r : std_logic_vector(0 to LANES-1);
+    signal lane_op_r : aluop_t := A_ADD;
+    signal op_r  : opcode_t := OP_HALT;
+    signal di_r  : integer range 0 to 7 := 0;
+
+    -- scratchpad (BRAM) access
+    signal bank_dout   : word_array(0 to LANES-1);
     signal cpu_bank, cpu_row : integer range 0 to 65535;
-    signal ld_row : integer range 0 to BANK_D-1;
+    signal cpu_bank_r  : integer range 0 to LANES-1 := 0;
+    signal ld_row      : integer range 0 to BANK_D-1;
+    signal ld_row_r    : integer range 0 to BANK_D-1 := 0;  -- registered BRAM row index
+    signal b_raddr, b_waddr : integer range 0 to BANK_D-1;
+    signal b_we        : std_logic_vector(0 to LANES-1);
+    signal running     : std_logic;
 begin
     ----------------------------------------------------------------
     -- decode (combinational)
@@ -85,29 +103,58 @@ begin
         A_MAX when OP_VMAX, A_MUL when OP_VMUL, A_MAC when OP_VMAC,
         A_SLT when OP_VSLT, A_SEQ when OP_VSEQ, A_ADD when others;
 
+    -- lanes operate on the *registered* operands -> the DSP multiply is isolated
+    -- between the S_RUN and S_EX register stages.
     gen_lanes : for k in 0 to LANES-1 generate
-        opa(k) <= vreg(ai)(k);
-        opb(k) <= vreg(bi)(k);
-        opc(k) <= vreg(di)(k);           -- old Vd (MAC accumulator)
         u_lane : entity work.gpu_lane
-            port map (op => lane_op, a => opa(k), b => opb(k),
-                      c => opc(k), y => ly(k), flag => lflag(k));
+            port map (op => lane_op_r, a => opa_r(k), b => opb_r(k),
+                      c => opc_r(k), y => ly(k), flag => lflag(k));
     end generate;
 
-    -- CPU scratchpad flat address split (LANES assumed power-of-two friendly via mod/div)
     cpu_bank <= to_integer(unsigned(sp_addr)) mod LANES;
     cpu_row  <= to_integer(unsigned(sp_addr)) /  LANES;
-    sp_rd    <= bank(cpu_bank)(cpu_row) when cpu_row < BANK_D else (others => '0');
+    ld_row   <= (to_integer(signed(sreg(ai))) + to_integer(imm_s)) / LANES mod BANK_D;
 
-    -- VLD/VST base row : element base = sreg(ai)+imm (N-aligned) -> row = base/LANES
-    ld_row <= (to_integer(signed(sreg(ai))) + to_integer(imm_s)) / LANES
-              mod BANK_D;
-
-    busy <= '1' when state = S_RUN  else '0';
-    done <= '1' when state = S_DONE else '0';
+    running  <= '1' when state /= S_IDLE and state /= S_DONE else '0';
+    busy     <= running;
+    done     <= '1' when state = S_DONE else '0';
+    sp_rd    <= bank_dout(cpu_bank_r);
 
     ----------------------------------------------------------------
-    -- sequential engine
+    -- scratchpad address / write-enable selects
+    ----------------------------------------------------------------
+    b_raddr <= ld_row_r when state = S_VLD2 else (cpu_row mod BANK_D);
+    b_waddr <= ld_row_r when state = S_VST2 else (cpu_row mod BANK_D);
+    gen_bwe : for k in 0 to LANES-1 generate
+        b_we(k) <= '1' when (state = S_VST2 and mask(k) = '1')
+                         or (running = '0' and sp_we = '1' and k = cpu_bank
+                             and cpu_row < BANK_D)
+                   else '0';
+        bdin(k) <= vreg(bi)(k) when state = S_VST2 else sp_wd;
+    end generate;
+
+    cpu_rd_sel : process(clk)
+    begin
+        if rising_edge(clk) then cpu_bank_r <= cpu_bank; end if;
+    end process;
+
+    -- scratchpad = 8 independent single-port synchronous RAMs -> block RAM
+    gen_banks : for k in 0 to LANES-1 generate
+        signal bmem : word_array(0 to BANK_D-1) := (others => (others => '0'));
+        attribute ram_style : string;
+        attribute ram_style of bmem : signal is "block";
+    begin
+        ram_proc : process(clk)
+        begin
+            if rising_edge(clk) then
+                if b_we(k) = '1' then bmem(b_waddr) <= bdin(k); end if;
+                bank_dout(k) <= bmem(b_raddr);
+            end if;
+        end process;
+    end generate;
+
+    ----------------------------------------------------------------
+    -- control + datapath
     ----------------------------------------------------------------
     process(clk)
     begin
@@ -115,75 +162,52 @@ begin
             if rst = '1' then
                 state <= S_IDLE; pc <= 0; mask <= (others => '1');
             else
-                -- CPU writes (imem / scalar args / scratchpad) only while not running
-                if state /= S_RUN then
+                if running = '0' then            -- CPU register writes (imem / scalars)
                     if imem_we = '1' and to_integer(unsigned(imem_addr)) < IMEM_D then
                         imem(to_integer(unsigned(imem_addr))) <= imem_wd;
                     end if;
                     if sarg_we = '1' then
                         sreg(to_integer(unsigned(sarg_idx))) <= sarg_data;
                     end if;
-                    if sp_we = '1' and (to_integer(unsigned(sp_addr)) / LANES) < BANK_D then
-                        bank(to_integer(unsigned(sp_addr)) mod LANES)
-                            (to_integer(unsigned(sp_addr)) / LANES) <= sp_wd;
-                    end if;
                 end if;
 
                 case state is
-                    ----------------------------------------------------
                     when S_IDLE =>
                         if start = '1' then
                             pc <= 0; mask <= (others => '1'); state <= S_RUN;
                         end if;
-                    ----------------------------------------------------
+
                     when S_RUN =>
                         case op is
-                            when OP_HALT =>
-                                state <= S_DONE;
+                            when OP_HALT  => state <= S_DONE;
 
-                            when OP_VLID =>
+                            when OP_VLID  =>
                                 for k in 0 to LANES-1 loop
-                                    if mask(k) = '1' then
-                                        vreg(di)(k) <= std_logic_vector(to_unsigned(k, 32));
-                                    end if;
+                                    if mask(k)='1' then vreg(di)(k) <= std_logic_vector(to_unsigned(k,32)); end if;
                                 end loop;
                                 pc <= pc + 1;
 
                             when OP_VMOVI =>
                                 for k in 0 to LANES-1 loop
-                                    if mask(k) = '1' then
-                                        vreg(di)(k) <= std_logic_vector(imm_s);
-                                    end if;
+                                    if mask(k)='1' then vreg(di)(k) <= std_logic_vector(imm_s); end if;
                                 end loop;
                                 pc <= pc + 1;
 
                             when OP_VBCAST =>
                                 for k in 0 to LANES-1 loop
-                                    if mask(k) = '1' then vreg(di)(k) <= sreg(ai); end if;
+                                    if mask(k)='1' then vreg(di)(k) <= sreg(ai); end if;
                                 end loop;
                                 pc <= pc + 1;
 
-                            when OP_VLD =>
-                                for k in 0 to LANES-1 loop
-                                    if mask(k) = '1' then vreg(di)(k) <= bank(k)(ld_row); end if;
-                                end loop;
-                                pc <= pc + 1;
+                            when OP_VLD   =>            -- register row, read next cycle
+                                ld_row_r <= ld_row;
+                                state    <= S_VLD2;
 
-                            when OP_VST =>
-                                for k in 0 to LANES-1 loop
-                                    if mask(k) = '1' then bank(k)(ld_row) <= vreg(bi)(k); end if;
-                                end loop;
-                                pc <= pc + 1;
+                            when OP_VST   =>            -- register row, write next cycle
+                                ld_row_r <= ld_row;
+                                state    <= S_VST2;
 
-                            when OP_VSLT | OP_VSEQ =>
-                                for k in 0 to LANES-1 loop
-                                    mask(k) <= lflag(k);
-                                end loop;
-                                pc <= pc + 1;
-
-                            when OP_MASKON =>
-                                mask <= (others => '1');
-                                pc <= pc + 1;
+                            when OP_MASKON => mask <= (others => '1'); pc <= pc + 1;
 
                             when OP_SADDI =>
                                 sreg(di) <= std_logic_vector(signed(sreg(ai)) + imm_s);
@@ -193,20 +217,56 @@ begin
                                 if signed(sreg(ai)) /= 0
                                    and (pc + to_integer(imm_s)) >= 0
                                    and (pc + to_integer(imm_s)) <= IMEM_D-1 then
-                                    pc <= pc + to_integer(imm_s);   -- taken branch (bounds-safe)
+                                    pc <= pc + to_integer(imm_s);
                                 else
                                     pc <= pc + 1;
                                 end if;
 
-                            when others =>   -- vector ALU class (VADD..VMAX,VMUL,VMAC)
+                            when others =>      -- vector ALU class -> latch operands, pipeline
                                 for k in 0 to LANES-1 loop
-                                    if mask(k) = '1' then vreg(di)(k) <= ly(k); end if;
+                                    opa_r(k) <= vreg(ai)(k);
+                                    opb_r(k) <= vreg(bi)(k);
+                                    opc_r(k) <= vreg(di)(k);
                                 end loop;
-                                pc <= pc + 1;
+                                lane_op_r <= lane_op;
+                                op_r      <= op;
+                                di_r      <= di;
+                                mask_r    <= mask;
+                                state     <= S_EX;
                         end case;
-                    ----------------------------------------------------
+
+                    when S_EX =>                 -- lane ALU / DSP -> result register
+                        res_r  <= ly;
+                        flag_r <= lflag;
+                        state  <= S_WB;
+
+                    when S_WB =>                 -- write back the registered result
+                        if op_r = OP_VSLT or op_r = OP_VSEQ then
+                            mask <= flag_r;
+                        else
+                            for k in 0 to LANES-1 loop
+                                if mask_r(k)='1' then vreg(di_r)(k) <= res_r(k); end if;
+                            end loop;
+                        end if;
+                        pc    <= pc + 1;
+                        state <= S_RUN;
+
+                    when S_VLD2 =>               -- BRAM read issued with registered addr
+                        state <= S_VLD3;
+
+                    when S_VLD3 =>               -- bank_dout valid (1-cycle BRAM read)
+                        for k in 0 to LANES-1 loop
+                            if mask(k)='1' then vreg(di)(k) <= bank_dout(k); end if;
+                        end loop;
+                        pc    <= pc + 1;
+                        state <= S_RUN;
+
+                    when S_VST2 =>               -- write committed via b_we this cycle
+                        pc    <= pc + 1;
+                        state <= S_RUN;
+
                     when S_DONE =>
-                        if start = '1' then           -- relaunch
+                        if start = '1' then
                             pc <= 0; mask <= (others => '1'); state <= S_RUN;
                         end if;
                 end case;

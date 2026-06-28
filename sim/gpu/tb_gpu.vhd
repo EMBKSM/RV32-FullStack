@@ -67,9 +67,9 @@ begin
         procedure rdv(ba : integer; v : out std_logic_vector(31 downto 0)) is
         begin
             sel<='1'; re<='1'; addr<=std_logic_vector(to_unsigned(ba,16));
+            wait until rising_edge(clk);   -- scratchpad read is registered (1-cycle BRAM latency)
             wait for 1 ns;
             v := rdata;
-            wait until rising_edge(clk);
             re<='0'; sel<='0';
         end procedure;
 
