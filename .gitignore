@@ -22,6 +22,9 @@ ip_build/
 *.jou
 *.log
 *.str
+*.dmp
+hs_err_pid*
+clockInfo.txt
 *.cache/
 *.runs/
 *.gen/
