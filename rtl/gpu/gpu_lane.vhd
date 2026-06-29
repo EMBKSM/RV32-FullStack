@@ -23,13 +23,17 @@ entity gpu_lane is
 end entity gpu_lane;
 
 architecture rtl of gpu_lane is
-    signal prod : signed(31 downto 0);            -- 16x16 -> 32: one DSP48E1 per lane
+    -- One DSP48E1 per lane in its native multiply-add mode P = A*B + C, shared by
+    -- BOTH VMUL (C forced to 0) and VMAC (C = old Vd) -> 8 lanes = 8 DSP, not 16.
+    signal madd  : signed(31 downto 0);
+    signal c_sel : signed(31 downto 0);
     attribute use_dsp : string;
-    attribute use_dsp of prod : signal is "yes";  -- 8 lanes -> 8 DSP (fits the 18 free)
+    attribute use_dsp of madd : signal is "yes";
 begin
-    prod <= signed(a(15 downto 0)) * signed(b(15 downto 0));
+    c_sel <= signed(c) when op = A_MAC else (others => '0');
+    madd  <= signed(a(15 downto 0)) * signed(b(15 downto 0)) + c_sel;
 
-    process(op, a, b, c, prod)
+    process(op, a, b, madd)
         variable sa, sb : signed(31 downto 0);
         variable sh     : integer range 0 to 31;
         variable res    : std_logic_vector(31 downto 0);
@@ -51,8 +55,8 @@ begin
             when A_SRA  => res := std_logic_vector(shift_right(sa, sh));
             when A_MIN  => if sa < sb then res := a; else res := b; end if;
             when A_MAX  => if sa > sb then res := a; else res := b; end if;
-            when A_MUL  => res := std_logic_vector(prod);
-            when A_MAC  => res := std_logic_vector(prod + signed(c));
+            when A_MUL  => res := std_logic_vector(madd);   -- a*b  (c_sel = 0)
+            when A_MAC  => res := std_logic_vector(madd);   -- a*b + c
             when A_SLT  => if sa <  sb then fl := '1'; end if;
                           res := (0 => fl, others => '0');
             when A_SEQ  => if  a =  b  then fl := '1'; end if;

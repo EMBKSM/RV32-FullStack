@@ -36,7 +36,6 @@ puts "================  FULL SoC POST-SYNTH UTILIZATION  ================"
 puts [report_utilization -return_string]
 opt_design
 place_design
-phys_opt_design
 route_design
 report_utilization    -file $R/_soc_util.rpt
 report_timing_summary -file $R/_soc_timing.rpt -max_paths 10

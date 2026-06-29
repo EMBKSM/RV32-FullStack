@@ -55,9 +55,25 @@ GEMM on real silicon at **WNS −0.118 @ 106 MHz (slow corner)** — slow-corner
 slack still met on the actual device. So −0.220 OOC ≈ ~98 MHz worst-case, very likely
 fine at 100 MHz on the board.
 
+### Update — GPU dropped to 8 DSP (done), flat OOC still congestion-bound
+
+The DSP-sharing fix is implemented (`rtl/gpu/gpu_lane.vhd`): one DSP48E1 per lane in
+`C+A*B` mode serves both VMUL (`C=0`) and VMAC — Vivado confirms `DSP madd ... Mode is:
+C+A*B`. xsim still passes all 3 kernels, the GPU still closes **+0.032 standalone**, and
+the integrated SoC drops to **210/220 DSP** (was 218). So the headroom went 2 → 10 DSP.
+
+But at **210/220 (95 %)** the flat-OOC place/route is *still* congestion-bound: default
+`place_design`/`route_design` grind 25+ min without producing a post-route report, and
+`phys_opt_design` likewise. Packing a 200-DSP NPU next to anything on a 220-DSP part
+leaves the router almost no slack — this is inherent to a near-full small device, not a
+tool setting. **A flat OOC run is the wrong vehicle for closing this design.**
+
 ## Bottom line
 
-The GPU **fits alongside the NPU at 218/220 DSP** and the integrated SoC sits **0.22 ns
-from 100 MHz**, limited by **DSP-packing congestion** (not logic). Recommended close:
-**GPU 16 → 8 DSP** (shared MAC) for routing headroom, or a Pblock floorplan / full
-board build. Repro: `fpga/scripts/synth_platform_ooc.tcl` + `platform_ooc.xdc`.
+The GPU **fits alongside the NPU** (now **210/220 DSP** after the 8-DSP refactor) and is
+**0.22 ns from 100 MHz** — the limit is **DSP-packing congestion, not logic** (the GPU
+path closes +0.032 with room). Proper closure needs the **full board-project build**
+(PS + Pblock floorplan + real clocking), which is exactly how the core+NPU build closed
+on silicon at **100/106 MHz** (it even ran GEMM at slow-corner WNS −0.118 @106 MHz). That
+build also produces the bitstream for on-board GPU verification — so it's the convergent
+next step. Repro of this analysis: `fpga/scripts/synth_platform_ooc.tcl` + `platform_ooc.xdc`.
