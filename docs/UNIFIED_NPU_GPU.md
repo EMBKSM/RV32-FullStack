@@ -89,6 +89,22 @@ vmac(A*B+C): checked 8 lanes      <- accumulate (C=Vd) runs on the borrowed NPU 
 ==== UNIFIED TB: ALL TESTS PASS (GPU mul on shared NPU DSPs) ====
 ```
 
+**4) Board bitstream — it fits, routes, and (essentially) closes 100 MHz.** Full Zynq
+build (PS7 + the unified PL) on xc7z020clg400-1, strategy Performance_ExplorePostRoutePhysOpt:
+
+| metric | result |
+|---|---|
+| DSP48E1 (whole platform: core + caches + 16×16 NPU + GPU) | **202 / 220 (92 %)** |
+| Routing | **0 failed nets, 0 overlaps** (the separate 210-DSP build stalled here) |
+| Hold (WHS) | **+0.045 ns — met** |
+| Setup (WNS @100 MHz, post-route phys_opt) | **−0.054 ns** (Fmax ≈ 99.5 MHz; better than the silicon-proven core+NPU at −0.118) |
+| Bitstream | **`fpga/flash/rv32_unified_100mhz.bit` (3.9 MB) generated** |
+
+Same ~−0.05 ns slow-corner setup as the already-silicon-verified core+NPU build (which
+ran GEMM on the board), now carrying the GPU too. Ready to flash + JTAG-test.
+(Build: bump the platform-IP version each run so Vivado re-synthesizes from current
+source; add `fpga/constraints/zybo_z7_20_{gpio,pmod}.xdc` to the impl constraint set.)
+
 ## RTL deltas (as built)
 
 - `npu_pe`: generic `GPU_LANE`; one multiply `mul_a*mul_b + mul_c` with operand muxes

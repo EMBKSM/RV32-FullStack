@@ -18,6 +18,9 @@ create_project -force prj_rv32_platform $BUILD/rv32_platform -part $PART
 add_files -norecurse [glob $RTL/*.vhd $RTL/*/*.vhd $RTL/*/*/*.vhd]
 # rv32_soc is the sim-only top (embeds prog ports) - not needed in this IP
 remove_files [get_files -quiet *rv32_soc.vhd]
+# the GPU (and the OOC flow generally) use VHDL-2008 constructs -> mark all VHDL
+# as 2008 so the packaged IP's OOC synthesis reads them correctly
+set_property file_type {VHDL 2008} [get_files *.vhd]
 set_property top rv32_platform [get_filesets sources_1]
 update_compile_order -fileset sources_1
 
@@ -28,7 +31,12 @@ ipx::package_project -root_dir $root -vendor user -library rv32 \
     -taxonomy /UserIP -import_files -force -set_current true
 set core [ipx::current_core]
 set_property name         rv32_platform $core
-set_property version      1.0 $core
+# UNIQUE version each run: a same-version repackage makes the BD reuse the CACHED
+# OOC netlist, so RTL edits silently don't take (this bit us repeatedly). A fresh
+# version forces update_ip_catalog/upgrade_ip to re-synthesize from current source.
+set ver "1.[string range [clock seconds] end-4 end]"
+set_property version      $ver $core
+puts "### platform IP version = $ver (unique -> forces fresh OOC synth of unified fabric) ###"
 set_property display_name "rv32_platform (RV32 host-controlled SoC)" $core
 set_property description   "RV32I CPU + I\$/D\$ + MMIO(LED/SW/BTN) + AXI-Lite control slave" $core
 set_property vendor_display_name "RV32-FullStack" $core
