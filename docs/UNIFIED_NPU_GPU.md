@@ -105,6 +105,20 @@ ran GEMM on the board), now carrying the GPU too. Ready to flash + JTAG-test.
 (Build: bump the platform-IP version each run so Vivado re-synthesizes from current
 source; add `fpga/constraints/zybo_z7_20_{gpio,pmod}.xdc` to the impl constraint set.)
 
+**5) Silicon — both modes verified on the real board.** `rv32_unified_100mhz.bit`
+flashed onto the Zybo Z7-20 (XC7Z020) via JTAG; the RV32 core driven through `ctrl_axi`
+(PS M_AXI_GP0 → 0x4000_0000), results read back from its register file.
+
+| test | program | board result | golden | |
+|---|---|---|---|---|
+| **NPU mode** | 2×2 INT8 GEMM (uses all 256 PEs incl. the 8 dual-mode ones) | C = 39, 53, 17, 23 | 39, 53, 17, 23 | ✅ |
+| **GPU mode** | VMOVI/VMUL(6·7)/VLID/VADD → 42+k on the borrowed DSPs | lanes = 42, 43, 44, 45 | 42, 43, 44, 45 | ✅ |
+
+The **same 8 DSP48E1s** compute INT8 systolic MAC (NPU GEMM passes) **and** the GPU
+lane multiply-add (GPU kernel passes) on real silicon @ 100 MHz — the unified shared-DSP
+fabric works end-to-end on hardware. Drivers: `flash/jtag_unified_{gemm,gpu}.tcl`,
+GPU firmware `sw/host/gpu_board_demo.s`.
+
 ## RTL deltas (as built)
 
 - `npu_pe`: generic `GPU_LANE`; one multiply `mul_a*mul_b + mul_c` with operand muxes
