@@ -34,11 +34,28 @@ synth_design -mode out_of_context -top rv32_platform -part xc7z020clg400-1
 report_utilization -file $R/_soc_util.rpt
 puts "================  FULL SoC POST-SYNTH UTILIZATION  ================"
 puts [report_utilization -return_string]
-if {[catch {opt_design; place_design; route_design} pe]} {
-    puts "IMPL stopped (likely over-utilization / congestion): $pe"
+opt_design
+place_design
+phys_opt_design
+route_design
+report_utilization    -file $R/_soc_util.rpt
+report_timing_summary -file $R/_soc_timing.rpt -max_paths 10
+puts "================  FULL SoC TIMING (post-route)  ================"
+puts [report_timing_summary -return_string -no_detailed_paths]
+# close the last slack with physical optimization (default = stable; Aggressive
+# crashed the tool on the GPU run)
+if {[catch {phys_opt_design} pe]} {
+    puts "phys_opt_design raised: $pe (keeping post-route report)"
 } else {
-    report_utilization    -file $R/_soc_util.rpt
     report_timing_summary -file $R/_soc_timing.rpt -max_paths 10
-    puts "================  FULL SoC TIMING (post-route)  ================"
+    puts "================  FULL SoC TIMING (post phys_opt)  ================"
+    puts [report_timing_summary -return_string -no_detailed_paths]
+}
+# a second phys_opt pass often recovers a bit more on congested designs
+if {[catch {phys_opt_design} pe2]} {
+    puts "phys_opt pass2 raised: $pe2"
+} else {
+    report_timing_summary -file $R/_soc_timing.rpt -max_paths 10
+    puts "================  FULL SoC TIMING (post phys_opt x2)  ================"
     puts [report_timing_summary -return_string -no_detailed_paths]
 }

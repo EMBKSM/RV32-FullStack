@@ -29,17 +29,35 @@ Elaboration + synthesis are clean (0 errors) — the GPU is correctly integrated
 Critical path: **inside the GPU** — `u_mmio/u_gpu/u_core/pc_reg[0] → pc_reg[1]`
 (the `SBNZ` / PC-adder branch path; CARRY4×6 + the imem read, route 69 %).
 
-This run used the **plain** OOC flow — no `synth -retiming`, no `place/route
--directive Explore`, no `phys_opt_design`. The **standalone** GPU closed this very
-class of path from −0.338 to **+0.032** using exactly those directives, and the board
-core+NPU build closes at 100/106 MHz the same way. So −0.220 with 12 near-paths is the
-*un-optimized* integrated number; applying the proven directives is expected to close
-the integration to MET. (Left as the next step — the optimized full-SoC impl is the
-~20-30 min congested place/route, the GPU was not in the previously board-verified
-core+NPU build.)
+### Closing attempt → it's congestion-bound, not logic-bound
+
+Tried to close the −0.220 with the recipe that worked on the standalone GPU
+(−0.338 → +0.032): `place/route -directive Explore` + `phys_opt_design`, then a
+default `place/route` + 3× `phys_opt_design`. **Both stalled.** At **218/220 DSP
+(99 %)** the placer/router/phys-opt have essentially no free fabric to move the
+critical cells into, so each pass grinds for tens of minutes with the GPU's
+`pc`/`SBNZ` path stuck at −0.220 (route is 69 % of it — pure congestion). The same
+GPU `pc` path closes to **+0.032 standalone**, where it has room — so the logic is
+fine; the integrated number is a **placement-congestion** artifact of packing the DSPs
+to 99 %.
+
+### The clean fix: free DSP headroom
+
+The decisive lever is to **drop the GPU from 16 DSP to 8** — one DSP per lane doing
+`A*B` *and* `A*B+C` (the DSP's native multiply-accumulate) instead of two. That takes
+the SoC to **210/220 DSP**, giving the router the slack to place the GPU datapath
+without the long detours. Cheaper alternatives: a **Pblock floorplan** separating the
+NPU array from the GPU, or the **full board-project build** (PS + proper clock +
+device constraints place things very differently from this flat OOC run).
+
+Board precedent says the design is silicon-viable regardless: the core+NPU build ran
+GEMM on real silicon at **WNS −0.118 @ 106 MHz (slow corner)** — slow-corner negative
+slack still met on the actual device. So −0.220 OOC ≈ ~98 MHz worst-case, very likely
+fine at 100 MHz on the board.
 
 ## Bottom line
 
-The GPU **fits alongside the NPU** (DSP 218/220) and the integrated SoC is **0.22 ns
-from 100 MHz on the default flow**, limited by an optimizable GPU-internal branch path.
-Repro: `fpga/scripts/synth_platform_ooc.tcl` + `fpga/scripts/platform_ooc.xdc`.
+The GPU **fits alongside the NPU at 218/220 DSP** and the integrated SoC sits **0.22 ns
+from 100 MHz**, limited by **DSP-packing congestion** (not logic). Recommended close:
+**GPU 16 → 8 DSP** (shared MAC) for routing headroom, or a Pblock floorplan / full
+board build. Repro: `fpga/scripts/synth_platform_ooc.tcl` + `platform_ooc.xdc`.
