@@ -43,7 +43,15 @@ entity gpu_core is
         sp_we     : in  std_logic;
         sp_addr   : in  std_logic_vector(15 downto 0);
         sp_wd     : in  std_logic_vector(31 downto 0);
-        sp_rd     : out std_logic_vector(31 downto 0)
+        sp_rd     : out std_logic_vector(31 downto 0);
+        -- shared-PE multiply bus: VMUL/VMAC run on 8 NPU PE DSPs (docs/UNIFIED_NPU_GPU.md).
+        -- Operands driven from the registered opa/opb/opc (valid in S_EX); the PE
+        -- registers A*B+C so the product g_y_i is valid in S_WB (aligns with res_r).
+        gpu_active : out std_logic;                                        -- -> npu gpu_mode
+        g_a_o      : out std_logic_vector(LANES*16-1 downto 0);
+        g_b_o      : out std_logic_vector(LANES*16-1 downto 0);
+        g_c_o      : out std_logic_vector(LANES*32-1 downto 0);
+        g_y_i      : in  std_logic_vector(LANES*32-1 downto 0) := (others => '0')
     );
 end entity gpu_core;
 
@@ -110,6 +118,16 @@ begin
             port map (op => lane_op_r, a => opa_r(k), b => opb_r(k),
                       c => opc_r(k), y => ly(k), flag => lflag(k));
     end generate;
+
+    -- shared-PE multiply operands: low 16 bits of the registered A/B; C = old Vd for
+    -- VMAC else 0 (matches the former in-lane madd). Driven from opa_r/opb_r/opc_r
+    -- (valid in S_EX); the PE registers A*B+C -> g_y_i valid in S_WB.
+    gen_gpu_mul : for k in 0 to LANES-1 generate
+        g_a_o(k*16+15 downto k*16) <= opa_r(k)(15 downto 0);
+        g_b_o(k*16+15 downto k*16) <= opb_r(k)(15 downto 0);
+        g_c_o(k*32+31 downto k*32) <= opc_r(k) when lane_op_r = A_MAC else (others => '0');
+    end generate;
+    gpu_active <= running;   -- borrowed PEs stay in GPU mode for the whole kernel
 
     cpu_bank <= to_integer(unsigned(sp_addr)) mod LANES;
     cpu_row  <= to_integer(unsigned(sp_addr)) /  LANES;
@@ -245,7 +263,13 @@ begin
                             mask <= flag_r;
                         else
                             for k in 0 to LANES-1 loop
-                                if mask_r(k)='1' then vreg(di_r)(k) <= res_r(k); end if;
+                                if mask_r(k)='1' then
+                                    if op_r = OP_VMUL or op_r = OP_VMAC then
+                                        vreg(di_r)(k) <= g_y_i(k*32+31 downto k*32);  -- shared-PE DSP product
+                                    else
+                                        vreg(di_r)(k) <= res_r(k);                    -- lane ALU result
+                                    end if;
+                                end if;
                             end loop;
                         end if;
                         pc    <= pc + 1;

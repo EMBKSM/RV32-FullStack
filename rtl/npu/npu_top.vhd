@@ -32,7 +32,8 @@ entity npu_top is
     generic (
         N          : integer := 8;     -- array dimension
         AW         : integer := 13;    -- address width = ceil(log2 N) + 10
-        DSP_BUDGET : integer := 256    -- # PEs mapped to DSP48E1 (rest = LUT MAC)
+        DSP_BUDGET : integer := 256;   -- # PEs mapped to DSP48E1 (rest = LUT MAC)
+        NLANE      : integer := 8      -- # row-0 PEs shared as GPU lanes (shared DSP)
     );
     Port (
         clk    : in  std_logic;
@@ -44,7 +45,13 @@ entity npu_top is
         wstrb  : in  std_logic_vector(3 downto 0);        -- (unused: word-aligned writes)
         re     : in  std_logic := '0';                    -- read strobe (pipelined readback)
         rdata  : out std_logic_vector(31 downto 0);
-        rd_valid : out std_logic                          -- '1' when rdata holds the requested word
+        rd_valid : out std_logic;                         -- '1' when rdata holds the requested word
+        -- GPU shared-lane bus (passes straight through to the npu_array row-0 PEs)
+        gpu_mode : in  std_logic := '0';
+        g_a_flat : in  std_logic_vector(NLANE*16-1 downto 0) := (others => '0');
+        g_b_flat : in  std_logic_vector(NLANE*16-1 downto 0) := (others => '0');
+        g_c_flat : in  std_logic_vector(NLANE*32-1 downto 0) := (others => '0');
+        g_y_flat : out std_logic_vector(NLANE*32-1 downto 0)
     );
 end npu_top;
 
@@ -208,9 +215,11 @@ begin
     end process;
 
     u_array : entity work.npu_array
-        generic map (N => N, DSP_BUDGET => DSP_BUDGET)
+        generic map (N => N, DSP_BUDGET => DSP_BUDGET, NLANE => NLANE)
         port map (clk=>clk, en=>arr_en, clr=>arr_clr,
-                  a_west=>a_west_q, b_north=>b_north_q, acc_flat=>acc_flat);
+                  a_west=>a_west_q, b_north=>b_north_q, acc_flat=>acc_flat,
+                  gpu_mode=>gpu_mode, g_a_flat=>g_a_flat, g_b_flat=>g_b_flat,
+                  g_c_flat=>g_c_flat, g_y_flat=>g_y_flat);
 
     ----------------------------------------------------------------------------
     -- pipelined read-back (5 stages) -- closes timing toward 100 MHz

@@ -27,7 +27,13 @@ entity gpu_top is
         addr     : in  std_logic_vector(15 downto 0);   -- byte address within window
         wdata    : in  std_logic_vector(31 downto 0);
         rdata    : out std_logic_vector(31 downto 0);
-        rd_valid : out std_logic
+        rd_valid : out std_logic;
+        -- shared-PE multiply bus to the NPU (VMUL/VMAC run on 8 NPU DSPs; docs/UNIFIED_NPU_GPU.md)
+        gpu_active : out std_logic;
+        g_a_o      : out std_logic_vector(LANES*16-1 downto 0);
+        g_b_o      : out std_logic_vector(LANES*16-1 downto 0);
+        g_c_o      : out std_logic_vector(LANES*32-1 downto 0);
+        g_y_i      : in  std_logic_vector(LANES*32-1 downto 0) := (others => '0')
     );
 end entity gpu_top;
 
@@ -67,7 +73,9 @@ begin
             sp_we     => sp_we,
             sp_addr   => "0000" & addr(13 downto 2),           -- element index in scratchpad
             sp_wd     => wdata,
-            sp_rd     => sp_rd);
+            sp_rd     => sp_rd,
+            gpu_active => gpu_active,
+            g_a_o => g_a_o, g_b_o => g_b_o, g_c_o => g_c_o, g_y_i => g_y_i);
 
     -- read mux (single-cycle)
     process(all)

@@ -87,6 +87,11 @@ architecture Behavioral of mmio_bridge is
     signal is_gpu       : std_logic;
     signal gpu_rd       : std_logic_vector(31 downto 0);
     signal gpu_rd_valid : std_logic;
+    -- UNIFIED shared-PE multiply bus: the GPU borrows 8 NPU DSPs (docs/UNIFIED_NPU_GPU.md).
+    -- gpu_top drives operands/active; npu_top16's row-0 PEs return the products.
+    signal u_gpu_mode   : std_logic;
+    signal u_g_a, u_g_b : std_logic_vector(8*16-1 downto 0);
+    signal u_g_c, u_g_y : std_logic_vector(8*32-1 downto 0);
 begin
     -- MMIO region = 0x1xxx_xxxx
     is_mmio <= '1' when c_addr(31 downto 28) = x"1" else '0';
@@ -187,15 +192,21 @@ begin
     u_npu : entity work.npu_top16
         port map (clk=>clk, rst=>reset, sel=>is_npu, we=>c_we,
                   addr=>c_addr(13 downto 0), wdata=>c_wdata, wstrb=>c_wstrb,
-                  re=>c_re, rdata=>npu_rd, rd_valid=>npu_rd_valid);
+                  re=>c_re, rdata=>npu_rd, rd_valid=>npu_rd_valid,
+                  -- shared-PE lane bus (GPU borrows 8 row-0 DSPs)
+                  gpu_mode=>u_gpu_mode, g_a_flat=>u_g_a, g_b_flat=>u_g_b,
+                  g_c_flat=>u_g_c, g_y_flat=>u_g_y);
 
     -- GPU SIMT-lite coprocessor (uncached, single-cycle slave @ 0x4000_0000)
-    -- 8-lane vector engine; 64 KiB window -> addr[15:0]. Lanes LUT-based
-    -- (use_dsp="no") so all DSP48 stay with the NPU.
+    -- 8-lane vector engine; 64 KiB window -> addr[15:0]. VMUL/VMAC execute on 8
+    -- SHARED NPU DSPs (unified fabric) so the GPU adds 0 DSP -> full 16x16 NPU fits.
     u_gpu : entity work.gpu_top
         port map (clk=>clk, rst=>reset, sel=>is_gpu, we=>c_we, re=>c_re,
                   addr=>c_addr(15 downto 0), wdata=>c_wdata,
-                  rdata=>gpu_rd, rd_valid=>gpu_rd_valid);
+                  rdata=>gpu_rd, rd_valid=>gpu_rd_valid,
+                  -- shared-PE multiply bus (operands out, products in)
+                  gpu_active=>u_gpu_mode, g_a_o=>u_g_a, g_b_o=>u_g_b,
+                  g_c_o=>u_g_c, g_y_i=>u_g_y);
 
     -- NPU reads are now pipelined (3-cycle): stall the core until rd_valid.
     -- (The 256:1 accumulator read mux was split into registered stages to close

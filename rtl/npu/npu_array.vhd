@@ -13,7 +13,8 @@ use IEEE.STD_LOGIC_1164.ALL;
 entity npu_array is
     generic (
         N          : integer := 8;         -- array dimension
-        DSP_BUDGET : integer := 256        -- # PEs (row-major) mapped to DSP48E1; rest use LUT MAC
+        DSP_BUDGET : integer := 256;       -- # PEs (row-major) mapped to DSP48E1; rest use LUT MAC
+        NLANE      : integer := 8          -- # row-0 PEs that double as GPU lanes (shared DSP)
     );
     Port (
         clk      : in  std_logic;
@@ -21,7 +22,13 @@ entity npu_array is
         clr      : in  std_logic;
         a_west   : in  std_logic_vector(N*8-1 downto 0);     -- N x INT8
         b_north  : in  std_logic_vector(N*8-1 downto 0);     -- N x INT8
-        acc_flat : out std_logic_vector(N*N*32-1 downto 0)   -- N*N x INT32
+        acc_flat : out std_logic_vector(N*N*32-1 downto 0);  -- N*N x INT32
+        -- GPU shared-lane bus: drives the DSPs of PE(0,0..NLANE-1) when gpu_mode='1'
+        gpu_mode : in  std_logic := '0';
+        g_a_flat : in  std_logic_vector(NLANE*16-1 downto 0) := (others => '0');
+        g_b_flat : in  std_logic_vector(NLANE*16-1 downto 0) := (others => '0');
+        g_c_flat : in  std_logic_vector(NLANE*32-1 downto 0) := (others => '0');
+        g_y_flat : out std_logic_vector(NLANE*32-1 downto 0)
     );
 end npu_array;
 
@@ -47,21 +54,37 @@ begin
     -- any beyond the budget fall back to LUT-fabric MACs (so 16x16=256 MAC fits 220 DSP).
     gen_row : for i in 0 to N-1 generate
         gen_col : for j in 0 to N-1 generate
-            constant PIDX : integer := i*N + j;
-            constant UD   : string  := dsp_str(PIDX < DSP_BUDGET);
+            constant PIDX    : integer := i*N + j;
+            constant UD      : string  := dsp_str(PIDX < DSP_BUDGET);
+            constant IS_LANE : boolean := (i = 0) and (j < NLANE);
         begin
-            u_pe : entity work.npu_pe
-                generic map ( DSP_USE => UD )
-                port map (
-                    clk   => clk,
-                    en    => en,
-                    clr   => clr,
-                    a_in  => aw(i, j),
-                    b_in  => bw(i, j),
-                    a_out => aw(i, j+1),
-                    b_out => bw(i+1, j),
-                    acc   => acc_flat((i*N+j)*32+31 downto (i*N+j)*32)
-                );
+            -- row-0 cols 0..NLANE-1 : dual-mode PE (systolic MAC OR GPU lane on the SAME DSP)
+            g_lane : if IS_LANE generate
+                u_pe : entity work.npu_pe
+                    generic map ( DSP_USE => UD, GPU_LANE => true )
+                    port map (
+                        clk   => clk,    en => en,    clr => clr,
+                        a_in  => aw(i, j),   b_in  => bw(i, j),
+                        a_out => aw(i, j+1), b_out => bw(i+1, j),
+                        acc   => acc_flat((i*N+j)*32+31 downto (i*N+j)*32),
+                        gpu_mode => gpu_mode,
+                        g_a => g_a_flat(j*16+15 downto j*16),
+                        g_b => g_b_flat(j*16+15 downto j*16),
+                        g_c => g_c_flat(j*32+31 downto j*32),
+                        g_y => g_y_flat(j*32+31 downto j*32)
+                    );
+            end generate;
+            -- all other PEs : NPU-only (unchanged, gpu ports default off -> no area cost)
+            g_norm : if not IS_LANE generate
+                u_pe : entity work.npu_pe
+                    generic map ( DSP_USE => UD )
+                    port map (
+                        clk   => clk,    en => en,    clr => clr,
+                        a_in  => aw(i, j),   b_in  => bw(i, j),
+                        a_out => aw(i, j+1), b_out => bw(i+1, j),
+                        acc   => acc_flat((i*N+j)*32+31 downto (i*N+j)*32)
+                    );
+            end generate;
         end generate;
     end generate;
 end rtl;

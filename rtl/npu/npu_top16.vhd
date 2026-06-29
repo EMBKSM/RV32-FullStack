@@ -17,14 +17,22 @@ entity npu_top16 is
         wstrb  : in  std_logic_vector(3 downto 0);
         re     : in  std_logic := '0';
         rdata  : out std_logic_vector(31 downto 0);
-        rd_valid : out std_logic
+        rd_valid : out std_logic;
+        -- GPU shared-lane bus: the GPU borrows the DSPs of 8 row-0 PEs (docs/UNIFIED_NPU_GPU.md)
+        gpu_mode : in  std_logic := '0';
+        g_a_flat : in  std_logic_vector(8*16-1 downto 0) := (others => '0');
+        g_b_flat : in  std_logic_vector(8*16-1 downto 0) := (others => '0');
+        g_c_flat : in  std_logic_vector(8*32-1 downto 0) := (others => '0');
+        g_y_flat : out std_logic_vector(8*32-1 downto 0)
     );
 end npu_top16;
 
 architecture rtl of npu_top16 is
 begin
     u_npu : entity work.npu_top
-        generic map (N => 16, AW => 14, DSP_BUDGET => 200)   -- 200 DSP48E1 + 56 LUT MAC = 256 (20 spare DSP eases routing)
+        generic map (N => 16, AW => 14, DSP_BUDGET => 200, NLANE => 8)   -- full 16x16; the GPU SHARES 8 of these PEs' DSPs (docs/UNIFIED_NPU_GPU.md) -> no extra DSP
         port map (clk=>clk, rst=>rst, sel=>sel, we=>we, addr=>addr,
-                  wdata=>wdata, wstrb=>wstrb, re=>re, rdata=>rdata, rd_valid=>rd_valid);
+                  wdata=>wdata, wstrb=>wstrb, re=>re, rdata=>rdata, rd_valid=>rd_valid,
+                  gpu_mode=>gpu_mode, g_a_flat=>g_a_flat, g_b_flat=>g_b_flat,
+                  g_c_flat=>g_c_flat, g_y_flat=>g_y_flat);
 end rtl;
