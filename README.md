@@ -1,222 +1,242 @@
 # RV32-FullStack
 
-검증된 **RV32I 소프트코어 CPU**(5-stage 파이프라인 + I$/D$ + AXI4 + Zicsr/트랩/FENCE.I)를
-Zynq-7000(Zybo Z7-20) FPGA에 올리고, **PC에서 RISC-V 어셈블리를 입력하면 UART로 전송 →
-CPU가 실행 → 결과(레지스터 변화)를 회신**하는 완전한 시스템.
+A from-scratch **RISC-V SoC on real silicon** (Zybo Z7-20 / Zynq XC7Z020): a 5-stage
+**RV32I** core with I$/D$, a **16×16 INT8 systolic NPU**, an **8-lane SIMT-lite GPU**, and a
+**unified compute fabric that lets the GPU borrow the NPU's DSPs** — so the full accelerator
+suite fits in one small FPGA. You write RISC-V assembly on the PC, it streams to the core over
+UART, runs on the board, and the registers update **live**.
+
+> **Headline:** the NPU and GPU never run at the same time, so the 8 GPU multiply-lanes are
+> *time-shared* onto 8 of the NPU's processing-element DSPs. The GPU therefore costs **0 extra
+> DSP** — the whole SoC is **202/220 DSP (92 %)** instead of 210 (which would not route), and it
+> is **verified on real silicon** (14/14 on-board tests pass @ 100 MHz). See
+> [`docs/UNIFIED_NPU_GPU.md`](docs/UNIFIED_NPU_GPU.md).
 
 ```
-[PC] sw/host/rv32_console.py   (어셈블러 + UART 콘솔)
-   │  "add x3,x1,x2" → 기계어 → 프로토콜
-   ▼ USB-UART 115200 8N1
-[Zynq PS / ARM]  sw/firmware/rv32_monitor.c   (명령 파서 + AXI-Lite 드라이버)
-   │  AXI4-Lite @ 0x4000_0000
-   ▼
-[Zynq PL]  rv32_platform   =   RV32 CPU + I$/D$ + 데이터/명령 RAM + MMIO(LED/SW/BTN)
-   ▲  레지스터 / PC / 커밋 / 데이터 회신
-   └──────────────────────────────────────────────────────────────────┘
+ PC  ── rv32_gui.py / rv32_console.py  (assembler + UART console, live register view)
+  │   USB-UART 115200 8N1
+  ▼
+ Zynq PS (ARM Cortex-A9) ── rv32_monitor.c   (command parser → AXI-Lite driver)
+  │   AXI4-Lite  M_AXI_GP0 @ 0x4000_0000
+  ▼
+ Zynq PL  =  rv32_platform
+  ┌───────────────────────────────────────────────────────────────────────┐
+  │  rv32_ctrl_axi   (load imem/dmem, run/step/reset, read regs/PC/commit)  │
+  │       │                                                                 │
+  │   RV32I core (5-stage, I$/D$, Zicsr/trap/FENCE.I)                        │
+  │       │ data bus → mmio_bridge ─┬─ 0x1xxx  Pmod MMIO (SPI/I2C/UART/PWM)  │
+  │       │                         ├─ 0x3xxx  NPU  (16×16 INT8 GEMM)        │
+  │       │                         └─ 0x4xxx  GPU  (8-lane SIMT vector)     │
+  │                                                                         │
+  │   ▟ UNIFIED FABRIC: 8 of the NPU's PEs are dual-mode — one DSP48E1 does  │
+  │     NPU INT8 MAC (A*B+P)  OR  a GPU lane multiply-add (A*B+C), by mode.  │
+  └───────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 1. 저장소 구조
+## 1. SoC architecture
+
+The design is a single source of truth in **VHDL** under `rtl/`. Everything below is real RTL,
+synthesized, and (where noted) verified on the board.
+
+### 1.1 RV32I core — `rtl/core/`
+Classic **5-stage pipeline** (`pc · icache · id · ex · mem · wb`, top = `rv32_core.vhd`):
+- **RV32I** base ISA + **Zicsr**, trap/exception unit, and **FENCE.I**.
+- Hazard unit + forwarding unit (full EX/MEM/WB bypass), branch-compare unit in EX.
+- **I-cache and D-cache** (`core/icache`, `core/mem`) with an **AXI4 master** to backing memory;
+  caches infer block RAM (synchronous read).
+- Verified against an instruction-set simulator bit-for-bit (see `docs/VERIFICATION.md`).
+
+### 1.2 NPU — 16×16 INT8 systolic GEMM — `rtl/npu/`
+An **output-stationary systolic array** of `N×N` processing elements (`npu_pe.vhd`), wrapped by
+`npu_top.vhd` / `npu_top16.vhd` (N=16) as an uncached MMIO slave at **0x3xxx_xxxx**:
+- Each PE accumulates `C[i][j] += a*b` on **INT8** operands; the multiply-accumulate maps to one
+  **DSP48E1**. A skew feeder streams the A-rows / B-cols; contraction depth K = 1…64 (tiled by SW).
+- 16×16 = 256 MACs; the first `DSP_BUDGET` (200) map to DSP, the rest to LUT fabric.
+- A **5-stage pipelined read-back** isolates the 256:1 accumulator mux and the requantize
+  multiply (INT32 → INT8: `clip((C*mult + round) >> shift)`), closing timing toward 100 MHz.
+- Map: `0x.000` CTRL/STATUS/K/CFG, `0x.1000` A, `0x.2000` B, `0x.3000` C. See `docs/NPU_DESIGN.md`.
+
+### 1.3 GPU — 8-lane SIMT-lite vector coprocessor — `rtl/gpu/`
+A **single-instruction, multiple-thread** engine: one PC drives **8 lanes** in lockstep with a
+per-lane predicate mask (`gpu_core.vhd`, `gpu_lane.vhd`, `gpu_pkg.vhd`), MMIO slave at **0x4xxx_xxxx**:
+- 8 vector regs (V0–V7) × 8 lanes, 8 scalar regs, 256-word instruction memory, and an
+  8-bank **block-RAM scratchpad**.
+- Vector ISA: `VADD/VSUB/VAND/VOR/VXOR/VSLL/VSRL/VSRA/VMIN/VMAX` (LUT ALU), `VMUL/VMAC`
+  (DSP multiply-add), `VSLT/VSEQ` (predicate), `VLID/VMOVI/VBCAST/VLD/VST`, scalar `SADDI/SBNZ`
+  for loops, `MASKON`, `HALT`.
+- 3-cycle vector-ALU pipeline isolates the DSP multiply; the scratchpad read is BRAM-latency-aware.
+  See `docs/GPU_DESIGN.md`.
+
+### 1.4 Unified fabric — the GPU shares the NPU's DSPs — `docs/UNIFIED_NPU_GPU.md`
+The XC7Z020 has only 220 DSP. A 16×16 NPU eats ~200; a *separate* 8-lane GPU adds 8 → 210, which
+won't route. **But the NPU and GPU never run simultaneously**, so the multipliers are time-shared:
+- `npu_pe` gains a `GPU_LANE` mode. There is exactly **one** multiply expression
+  `mul_a*mul_b + mul_c` with **muxed operands**, so synthesis maps both modes onto a **single
+  DSP48E1** — Vivado reports mode `(C or P)+A*B` (C-input for the GPU add, P-feedback for the NPU
+  accumulate). **Proven: 1 DSP per dual-mode PE.**
+- The 8 GPU lanes drop their own multipliers and borrow `PE(0,0..7)`. The bus is threaded
+  `gpu_core → gpu_top  ↔  mmio_bridge  ↔  npu_top16 → npu_array`; `gpu_active` drives the PE mode.
+- Result: full 16×16 NPU **+** GPU = **202 DSP**, same footprint as the silicon-proven core+NPU.
+
+### 1.5 Pmod peripherals — `rtl/soc/`
+`mmio_bridge.vhd` exposes the four Pmod headers **JA–JE (40 pins)** as memory-mapped peripherals
+at **0x1xxx_xxxx**, controllable directly from assembly with `sw`/`lw` (no firmware change):
+2× SPI (`spi_master`), 2× I2C (`i2c_master`), UART (`uart_lite`), PWM (`pwm_gen`), and a 22-pin
+GPIO bank (`gpio_port`), plus the legacy LED/SW/BTN. See `docs/PMOD_PERIPHERALS_DESIGN.md`.
+
+### 1.6 Multicore — `rtl/soc/rv32_dual.vhd`, `rv32_shared.vhd`
+Dual-core RV32 variants (independent + shared-memory SPMD) exist and pass their testbenches;
+OOC-synthesized and timing-closed. See `docs/MULTICORE_DESIGN.md` / `docs/MULTICORE_TIMING.md`.
+
+### 1.7 Zynq integration — `rtl/soc/rv32_platform.vhd` + `rv_ps/`
+`rv32_platform` is the whole PL subsystem packaged as a Vivado IP with an AXI-Lite control slave
+(`rv32_ctrl_axi.vhd`). The **ARM PS** runs a bare-metal monitor (`sw/firmware/rv32_monitor.c`,
+built for the Cortex-A9 in Vitis → `rv_firmware.elf`) that turns one-line UART commands into
+AXI-Lite transactions on the core — so the host can load, run, single-step, and read back the
+RV32 over the board's USB-UART, with **no DDR** (the board's DDR is faulty; everything goes
+JTAG/PS-AXI).
+
+### 1.8 Memory map
+| window | what |
+|---|---|
+| `0x0000_0000…` | instruction / data RAM (cached, Harvard) |
+| `0x1000_0000` | Pmod MMIO — LED/SW/BTN, GPIO `+0x20`, SPI0/1 `+0x40/0x60`, I2C0/1 `+0x80/0xA0`, UART `+0xC0`, PWM `+0xE0` |
+| `0x3000_0000` | NPU 16×16 (CTRL/STATUS/K/CFG, A/B/C buffers) |
+| `0x4000_0000` | GPU 8-lane (CTRL/STATUS, IMEM `+0x1000`, scratchpad `+0x4000`) |
+
+(The PS↔core control slave `rv32_ctrl_axi` lives at `0x4000_0000` in **PS** address space — a
+different bus from the core's own `0x4` GPU window.)
+
+---
+
+## 2. Repository layout
 ```
-rtl/                   RTL (VHDL, 단일 소스 of truth)
-  core/                5-stage 파이프라인: pc·icache·id·ex·mem·wb + rv32_core.vhd
-  soc/                 mmio_bridge·rv32_ctrl_axi·rv32_platform(합성 PL 탑)·rv32_soc(시뮬 탑)
-  npu/                 16×16 INT8 시스토릭 GEMM 가속기  (@ 0x3xxx_xxxx)
-  gpu/                 SIMT-lite 벡터 코프로세서        (@ 0x4xxx_xxxx)   ← 신규
-  common/              공용 유틸
-sim/                   통합/단위 TB(tb_*.sv·.vhd) + Python 모델 + .f 리스트
-  gpu/                 GPU C 골든모델(gpu_model.c) + tb_gpu.vhd + run_gpu.bat
+rtl/                VHDL — single source of truth
+  core/             5-stage pipeline: pc·icache·id·ex·mem·wb + rv32_core.vhd
+  npu/              16×16 INT8 systolic GEMM (npu_pe is the dual-mode shared-DSP cell)
+  gpu/              SIMT-lite vector coprocessor (gpu_core/lane/top + gpu_pkg)
+  soc/              mmio_bridge, Pmod peripherals, rv32_platform, rv32_ctrl_axi, multicore
+sim/                testbenches + C/Python golden models
+  gpu/  npu/  soc/  multicore/
 fpga/
-  scripts/             IP 패키징 / BD 빌드 / 비트스트림 / 회귀 tcl
-  constraints/         zybo_z7_20_*.xdc  (LED/SW/BTN, Pmod 핀)
-  flash/               부트/JTAG 스크립트
+  scripts/          IP packaging, BD build, bitstream, proofs (see fpga/scripts/README.md)
+  constraints/      zybo_z7_20_gpio.xdc / zybo_z7_20_pmod.xdc
+flash/              on-board bring-up: ps7_init.tcl, jtag_*.tcl, run_*.bat, bitstreams
 sw/
-  firmware/            Zynq PS 베어메탈 모니터(C)
-  host/                PC 콘솔/GUI(어셈블러+UART, Python)
-docs/                  설계·검증 문서(GPU_DESIGN.md 포함) + 다이어그램
-archive/legacy_bd/     구 BD 손배선 glue RTL(참고용)
-(gitignored, 재생성)   ip_repo/ ip_build/ rv_pl/ vivado_zynq/
+  host/             PC tools — rv32_gui.py (PySide6), rv32_console.py (CLI), assembler
+  firmware/         RV32 monitor source notes
+rv_ps/rv_firmware/  ARM PS monitor (rv32_monitor.c) + prebuilt rv_firmware.elf
+docs/               design + verification docs, diagrams
+(gitignored)        ip_repo/ ip_build/ vivado_zynq/   — regenerated by the build scripts
 ```
-> 생성물(`ip_repo` 등)은 추적하지 않음 — 신규 클론은 빌드 전
-> `fpga/scripts/package_platform_ip.tcl`로 `ip_repo`를 재생성한다.
 
 ---
 
-## 2. 빠른 시작 (4단계)
-1. **시뮬 검증** — §3
-2. **비트스트림 생성** — §4
-3. **PS 펌웨어** (Vitis) — §5
-4. **PC 콘솔로 실행** — §6
+## 3. Results — silicon-verified (XC7Z020, Vivado 2025.2)
+
+| metric | result |
+|---|---|
+| Whole-SoC DSP (core + caches + 16×16 NPU + GPU) | **202 / 220 (92 %)** — separate would be 210 |
+| Dual-mode PE | **1 DSP48E1** does NPU MAC *or* GPU multiply-add (`(C or P)+A*B`) |
+| Routing | 0 failed nets (the separate 210-DSP build stalled here) |
+| Timing @ 100 MHz | hold **met** (+0.045 ns); setup WNS **−0.054 ns** post-route phys-opt (Fmax ≈ 99.5 MHz) |
+| Bitstream | `fpga/flash/rv32_unified_100mhz.bit` |
+| **On-board, real silicon @ 100 MHz** | NPU GEMM = 39,53,17,23 ✅ · GPU VMUL/VMAC on the shared DSPs ✅ |
+| Comprehensive on-board suite | **14/14 PASS** — RV32 loop, NPU GEMM, all GPU ops, GPU SBNZ branch-loop |
+| Simulation | NPU GEMM golden, GPU `tb_unified` (vadd/saxpy/relu/vmac) all pass |
 
 ---
 
-## 3. 시뮬레이션 / 검증
-### 3.1 Python 모델 회귀 (보드·Vivado 불필요)
+## 4. Usage
+
+### 4.1 Simulation (no board / Vivado-light)
 ```
-cd sim
-python run_ifwb_core.py --programs 4000     # 파이프라인 모델 vs ISS (AT-01..30 + 랜덤)
-python run_pipeline50.py                    # 50-iter 회귀
-python test_rv32.py                         # 10-iter 회귀
-python run_alu_at.py ; python run_id_wb_at.py
-python verify_spec.py ; python verify_docs.py
-# 검증 유효성(결함 검출) 확인:
-python run_ifwb_core.py --bug forward       # forward|hazard|branch|x0 → "FAULT CAUGHT"
+# Python pipeline/ISS regressions (no Vivado):
+cd sim && python run_ifwb_core.py --programs 4000
+
+# HDL (xsim) regressions:
+sim\gpu\run_gpu.bat                     # GPU SIMT coprocessor   -> ALL TESTS PASS
+sim\multicore\run_dual.bat              # dual-core RV32 SPMD     -> ALL PASS
+# unified fabric (1-DSP proof + NPU GEMM + GPU on the shared DSPs):
+vivado -mode batch -source fpga\scripts\run_unified_proof.tcl   # 202 DSP + sim
 ```
-### 3.2 HDL(xsim) 회귀
-- 가속기: `sim\gpu\run_gpu.bat` (GPU SIMT-lite 코프로세서 → `==== GPU TB: ALL TESTS PASS ====`).
-  설계는 `docs/GPU_DESIGN.md`, C 골든모델은 `sim/gpu/gpu_model.c`.
-- 멀티코어: `sim\multicore\run_dual.bat` (듀얼코어 RV32 SPMD → `==== DUAL-CORE TB: ALL PASS ====`).
-  설계는 `docs/MULTICORE_DESIGN.md`, C 골든모델은 `sim/multicore/mc_model.c`.
-- 개별: Vivado 프로젝트에서 sim top 지정 후 `launch_simulation; run all`.
-  - `tb_rv32_soc`     — 풀 SoC(데이터패스+D$+CSR/트랩+FENCE.I+AT-30 랜덤)
-  - `tb_rv32_platform`— 플랫폼(PS 방식 load/run/step + MMIO)
-  - **`tb_ps_regress`** — **PS 제어경로 회귀: 25개 랜덤 프로그램을 PS와 동일한 AXI 시퀀스로
-    적재·실행·레지스터회신, ISS와 비트단위 대조**. (프로그램 수 조정: `-testplusarg PROGRAMS=40`)
-  - 기대: 각 TB 끝에 `RESULT: ALL PASS`.
 
-상세 검증 과정·결과는 **`docs/VERIFICATION.md`** 참조.
-
----
-
-## 4. 비트스트림 생성 (Vivado, cmd 배치)
+### 4.2 Build the bitstream (Vivado batch)
 ```
-"C:\Xilinx\2025.2\Vivado\bin\vivado.bat" -mode batch -source scripts\package_platform_ip.tcl
-"C:\Xilinx\2025.2\Vivado\bin\vivado.bat" -mode batch -source scripts\build_zynq_project.tcl
-"C:\Xilinx\2025.2\Vivado\bin\vivado.bat" -mode batch -source scripts\run_bitstream.tcl
+:: 1) package the PL (rv32_platform) as an IP — version bumped each run so Vivado
+::    re-synthesizes from current RTL (a same-version repackage reuses a stale netlist)
+vivado -mode batch -source fpga\scripts\package_platform_ip.tcl
+:: 2) build the Zynq block design + synth + impl + bitstream (FCLK0 = 100 MHz)
+vivado -mode batch -source fpga\scripts\build_npu16_100mhz.tcl
 ```
-- 1: `rv32_platform`을 IP로 패키징(S_AXI 슬레이브).
-- 2: 새 프로젝트 `vivado_zynq` + Zynq PS(Zybo 프리셋) + IP를 AXI 연결한 BD + wrapper.
-- 3: GPIO XDC 추가 → 합성→구현→비트스트림. 결과: `vivado_zynq/.../impl_1/rv32_top_wrapper.bit`.
-- (메모리는 BRAM으로 추론, LUT~47%, 타이밍 만족.)
+Output: `vivado_zynq/.../impl_1/rv32_top_wrapper.bit` (copied to `fpga/flash/`). The Zybo pin
+constraints `fpga/constraints/zybo_z7_20_{gpio,pmod}.xdc` must be in the impl constraint set
+(`fpga/scripts/add_xdc_rebuild.tcl` adds them if a build skipped them). See `fpga/scripts/README.md`.
 
----
+### 4.3 Bring the board up (JTAG + ARM monitor)
+With the board on USB, program the FPGA and launch the PS monitor over JTAG:
+```
+flash\run_monitor.bat        # fpga -f <bitstream>; dow rv_firmware.elf; con  (monitor runs on the ARM)
+```
+The monitor now listens on the board's **PS-UART COM port** at 115200. (DDR is faulty, so the
+RV32 is driven entirely through JTAG → PS-AXI → `rv32_ctrl_axi`; no QSPI/DDR boot.)
 
-## 5. PS 펌웨어 (Vitis)
-1. Vivado `vivado_zynq` → **Export Hardware (Include bitstream)** → `.xsa`.
-2. Vitis: `.xsa`로 Platform(standalone, `ps7_cortexa9_0`) → Empty C App.
-3. `ps_firmware/rv32_monitor.c`를 app `src/`에 추가 → Build.
-4. 보드 연결 → Program FPGA → app Run.
-- 제어 슬레이브 주소가 다르면 `rv32_monitor.c`의 `RV32_BASE` 수정(기본 `0x40000000`).
-- 자세히: `ps_firmware/README.md`.
-
----
-
-## 6. PC에서 실행 (GUI 또는 콘솔)
-
-### 6.1 GUI 앱 (권장) — `host_app/rv32_gui.py`
+### 4.4 Live control from the PC — GUI or console
 ```
 pip install pyserial PySide6
-python host_app/rv32_gui.py
+python sw\host\rv32_gui.py
 ```
-창 상단에서 보드 COM 포트 선택 → **Connect**. 패널 4개:
-- **Assembly** — 어셈블리 입력 + `Run ▶ / Step / Reset / Assemble`, 하단 기계어 미리보기.
-- **Registers** — x0~x31 표, 실행으로 **바뀐 레지스터를 노란색으로 강조**(signed/hex 전환).
-- **Data memory** — 주소·워드 수 지정 후 데이터 RAM 덤프(PS dump 포트).
-- **Peripherals** — LED/SW/BTN 4비트 인디케이터. 펌웨어가 지원하면(L/W/N) `auto-poll`로
-  라이브 표시, 아니면 `Refresh/Probe`(micro-program)로 읽음.
-- 하단 **Serial log** — PS와 주고받는 모든 UART 라인.
+Pick the board COM port (use `sw\host\port_probe.py` if unsure — the monitor replies `pc=…`/`st=…`),
+**Connect**, type assembly, **Run** → the **Registers** panel highlights every value that changed,
+live, as it ran on the silicon. `Step` single-steps; `Reset` clears. CLI alternative:
+```
+python sw\host\rv32_console.py --port COM10
+rv32> addi x1,x0,7   ↵   add x3,x1,x2   ↵   run     ->   x1=7  x3=18
+```
 
-### 6.2 콘솔(CLI) — `host_app/rv32_console.py`
+### 4.5 Comprehensive on-board test
 ```
-pip install pyserial
-python host_app/rv32_console.py --port COM5      # 보드 COM 포트
+flash\run_comprehensive.bat   # 14 cases: RV32 loop, NPU GEMM, every GPU op, GPU branch-loop
 ```
-```
-rv32> addi x1, x0, 7
-rv32> addi x2, x0, 11
-rv32> add  x3, x1, x2
-rv32> run
-  x1 = 0x00000007 (7)
-  x2 = 0x0000000b (11)
-  x3 = 0x00000012 (18)
-```
-명령: `<asm>`(추가) `run` `step` `reg` `mem <a>` `list` `clear` `asm <i>` `quit`.
-지원 명령어/예제(루프·LED)는 `host_app/README.md`.
-
-### 6.3 Pmod 주변장치 구동 예제 — SPI (JA)
-모든 Pmod 헤더(JA~JE, 40핀)가 MMIO 주변장치로 매핑돼 있어, 어셈블리에서 `sw`/`lw`로
-직접 제어한다(`0x1000_0000` 윈도우, PS 펌웨어/GUI 수정 불필요).
-아래는 **SPI0(JA)로 1바이트(0x55) 전송**. JA의 **2번(MOSI)↔3번(MISO)** 핀을 점프선으로
-묶으면 루프백되어 수신값이 송신값과 같아진다(`x4 = 0x55`). GUI Assembly 패널에 붙여넣거나
-콘솔에 한 줄씩 입력한 뒤 `Run`/`run`.
-
-```asm
-    lui   x1, 0x10000      # x1 = 0x1000_0000
-    addi  x1, x1, 0x40     # x1 = 0x1000_0040  (SPI0 base, JA)
-    li    x2, 24
-    sw    x2, 8(x1)        # DIV  -> ~1 MHz SCLK
-    sw    x0, 0(x1)        # CTRL -> mode 0, auto-SS
-    li    x2, 0x55
-    sw    x2, 12(x1)       # TX = 0x55  -> 전송 시작
-wait:
-    lw    x3, 4(x1)        # STATUS
-    andi  x3, x3, 1        # busy 비트
-    bne   x3, x0, wait     # busy면 계속 대기
-    lw    x4, 16(x1)       # RX  (점프선 루프백 시 0x55)
-```
-> 주소가 12비트를 넘으므로 `lui`+`addi`로 만든다(이 어셈블러의 `li`는 작은 값 전용).
-> `bne x3, x0, wait`는 `bnez x3, wait`와 동치.
-실행 결과 Registers 패널에 `x4 = 0x00000055`(노란색 강조). 점프선 없이 실제 Pmod SPI
-모듈을 꽂으면 같은 패턴으로 그 장치와 통신한다.
-나머지 주변장치(I2C/UART/PWM/GPIO)의 레지스터맵·핀맵·예제는 **`PMOD_PERIPHERALS_DESIGN.md`** 참조.
+Expect `==== COMPREHENSIVE BOARD TEST: 14 PASS / 0 FAIL ====`. The kernels are generated by
+`sw/host/gen_board_tests.py` (RV32 assembler + a small GPU-ISA encoder).
 
 ---
 
-## 7. 인터페이스 레퍼런스
-### 7.1 AXI-Lite 제어 레지스터 (PS 베이스 `0x4000_0000`)
-| off | R/W | 이름 | 설명 |
+## 5. Interface reference
+
+**AXI-Lite control slave** (`rv32_ctrl_axi`, PS base `0x4000_0000`)
+
+| off | R/W | name | meaning |
 |---|---|---|---|
-|0x00|W|CTRL|b0 reset, b1 run, b2 step, b3 clr_commit|
-|0x04|R|STATUS|b0 halted, b2 run|
-|0x08/0x0C|W|IMEM_ADDR / IMEM_WDATA|명령 메모리 적재(주소 후 데이터)|
-|0x10/0x14|W|DMEM_ADDR / DMEM_WDATA|데이터 메모리 적재|
-|0x18/0x1C|W/R|REG_ADDR / REG_RDATA|레지스터 N 선택 후 값 읽기|
-|0x20|R|PC|현재 PC|
-|0x24/0x28|R|LAST_RD / LAST_WDATA|마지막 커밋의 rd / 기록값|
-|0x2C|R|COMMIT_CNT|리타이어 명령 수|
-|0x30/0x34|W/R|DMEM_RADDR / DMEM_RDATA|데이터 메모리 읽기|
-|0x38/0x3C/0x40|R|LED / SW / BTN|보드 주변장치 읽기(주변장치-readback 빌드. 구 비트스트림은 0)|
+| 0x00 | W | CTRL | b0 reset · b1 run · b2 step · b3 clr_commit |
+| 0x04 | R | STATUS | b0 halted · b2 run |
+| 0x08/0x0C | W | IMEM_ADDR / WDATA | load instruction memory |
+| 0x10/0x14 | W | DMEM_ADDR / WDATA | load data memory |
+| 0x18/0x1C | W/R | REG_ADDR / RDATA | pick register N, then read it |
+| 0x20 | R | PC | current PC |
+| 0x24/0x28 | R | LAST_RD / WDATA | last retired rd / written value |
+| 0x2C | R | COMMIT_CNT | retired-instruction count |
 
-### 7.2 CPU 메모리 맵 / MMIO
-| 영역 | 주소 | 비고 |
-|---|---|---|
-|명령 RAM|0x0000_0000~|I$ 백킹(Harvard)|
-|데이터 RAM|0x0000_0000~0x0000_3FFF|D$(캐시됨)|
-|MMIO LED (W)|0x1000_0000|하위 4비트 → 보드 LED|
-|MMIO SW (R)|0x1000_0004|스위치 4|
-|MMIO BTN (R)|0x1000_0008|버튼 4|
-|MMIO GPIO|0x1000_0020|DIR/OUT/IN — Pmod 잔여 22핀|
-|MMIO SPI0 / SPI1|0x1000_0040 / 0x60|CTRL/STAT/DIV/TX/RX — JA / JB|
-|MMIO I2C0 / I2C1|0x1000_0080 / 0xA0|CMD/STAT/DIV/TX/RX — JC / JD|
-|MMIO UART|0x1000_00C0|DIV/STAT/TX/RX — JE|
-|MMIO PWM|0x1000_00E0|CTRL/PERIOD/DUTY0..3 — JE|
-
-> Pmod 주변장치(JA~JE) 블록은 `addr[7:5]`=장치, `addr[4:2]`=레지스터로 디코드된다.
-> 전체 비트 정의·핀맵·예제 어셈블리는 **`PMOD_PERIPHERALS_DESIGN.md`** 참조.
-
-### 7.3 UART 프로토콜 (PS 모니터, 한 줄=한 명령, HEX)
-`r`(reset) `i A D`(imem) `d A D`(dmem) `g`(run) `s`(step) `x N`(reg) `m A`(dmem rd)
-`p`(pc) `c`(commit) `t`(status) `D`(전체 레지스터) `L`(led) `W`(sw) `N`(btn) `h`(help).
-`L/W/N`은 주변장치-readback 빌드에서만 실제값을 반환(구 빌드는 0).
+**UART monitor protocol** (one line = one command, hex): `r` reset · `i A D` imem · `d A D` dmem ·
+`g` run · `s` step · `x N` read reg · `m A` read dmem · `p` PC · `c` commits · `t` status ·
+`D` dump all regs · `L/W/N` LED/SW/BTN · `h` help.
 
 ---
 
-## 8. 트러블슈팅
-- **콘솔 응답 없음**: 보드 COM/보레이트(115200) 확인, FPGA 프로그램+app Run 상태 확인.
-- **레지스터가 다 0**: `r` 후 `i`로 적재했는지, `g`로 run 했는지. (reset이 레지스터/캐시 초기화.)
-- **합성에서 RAM 추론 실패**: 메모리는 동기읽기로 BRAM 추론하도록 작성됨(`axi_slave_mem`).
-- **Vivado가 수정 반영 안 함("No Change in HDL")**: `close_sim; reset_simulation -mode behavioral;
-  launch_simulation` 또는 sim 폴더 삭제 후 재실행. (소스가 프로젝트에 import 복사본으로 들어가면
-  원본 수정이 반영 안 됨 — 원본 참조로 add.)
-- **정밀 1명령 step**: 파이프라인 특성상 한 명령 더 진행될 수 있음. 정확한 단발 결과는
-  "명령+halt 적재 후 run"(콘솔 `run`) 사용.
+## 6. Documentation
+- [`docs/UNIFIED_NPU_GPU.md`](docs/UNIFIED_NPU_GPU.md) — the shared-DSP fabric (design + silicon results)
+- [`docs/NPU_DESIGN.md`](docs/NPU_DESIGN.md) · [`docs/GPU_DESIGN.md`](docs/GPU_DESIGN.md) — accelerators
+- [`docs/SOC_INTEGRATION.md`](docs/SOC_INTEGRATION.md) · [`docs/SOC_PLATFORM_DESIGN.md`](docs/SOC_PLATFORM_DESIGN.md) — Zynq platform
+- [`docs/PMOD_PERIPHERALS_DESIGN.md`](docs/PMOD_PERIPHERALS_DESIGN.md) — Pmod MMIO map + examples
+- [`docs/MULTICORE_DESIGN.md`](docs/MULTICORE_DESIGN.md) · [`docs/VERIFICATION.md`](docs/VERIFICATION.md) · [`docs/BOARD_VERIFICATION_REPORT.md`](docs/BOARD_VERIFICATION_REPORT.md)
 
 ---
 
-## 9. 현황
-RV32I+Zicsr+트랩+FENCE.I CPU, I$/D$/AXI, 전 블록 IP, Zynq SoC 비트스트림(Zybo Z7-20),
-PS 펌웨어, PC 콘솔/GUI까지 완성·검증. **Pmod 헤더 JA~JE(40핀)를 MMIO 주변장치
-(2×SPI·2×I2C·UART·PWM·GPIO)로 노출** — 어셈블리에서 직접 제어(§6.3, `PMOD_PERIPHERALS_DESIGN.md`).
-세부 검증 내역은 `docs/VERIFICATION.md`.
+## 7. Status
+RV32I+Zicsr+trap+FENCE.I core, I$/D$/AXI, 16×16 INT8 NPU, 8-lane SIMT GPU, the **unified
+shared-DSP fabric**, Pmod peripherals, dual-core variants, the Zynq platform + ARM monitor, and the
+PC GUI/console are all complete and **verified on real XC7Z020 silicon @ 100 MHz** — including a
+14/14 on-board test suite and live register read-back in the GUI.
