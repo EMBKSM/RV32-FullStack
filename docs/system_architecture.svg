@@ -51,7 +51,7 @@
   <!-- RV32 core -->
   <rect x="255" y="424" width="410" height="56" rx="9" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.6" filter="url(#sh)"/>
   <text x="460" y="447" text-anchor="middle" font-size="13.5" font-weight="700" fill="#6D28D9">RV32I core &#8212; 5-stage pipeline</text>
-  <text x="460" y="466" text-anchor="middle" font-size="11" fill="#475569">pc &#183; icache &#183; id &#183; ex &#183; mem &#183; wb   |   Zicsr &#183; trap &#183; FENCE.I &#183; I$/D$ &#183; AXI4 master</text>
+  <text x="460" y="466" text-anchor="middle" font-size="11" fill="#475569">pc &#183; icache &#183; id &#183; ex &#183; mem &#183; wb   |   Zicsr &#183; trap &#183; FENCE.I &#183; I/D &#183; AXI4 master</text>
 
   <!-- arrow core -> bridge -->
   <line x1="460" y1="480" x2="460" y2="502" stroke="#64748B" stroke-width="1.6" marker-end="url(#arrow)"/>
