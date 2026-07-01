@@ -1,7 +1,7 @@
 # RV32-FullStack
 
 A from-scratch **RISC-V SoC on real silicon** (Zybo Z7-20 / Zynq XC7Z020): a 5-stage
-**RV32I** core with I$/D$, a **16×16 INT8 systolic NPU**, an **8-lane SIMT-lite GPU**, and a
+**RV32I** core with I-cache/D-cache, a **16×16 INT8 systolic NPU**, an **8-lane SIMT-lite GPU**, and a
 **unified compute fabric that lets the GPU borrow the NPU's DSPs** — so the full accelerator
 suite fits in one small FPGA. You write RISC-V assembly on the PC, it streams to the core over
 UART, runs on the board, and the registers update **live**.
@@ -219,7 +219,7 @@ Expect `==== COMPREHENSIVE BOARD TEST: 14 PASS / 0 FAIL ====`. The kernels are g
 ---
 
 ## 7. Status
-RV32I+Zicsr+trap+FENCE.I core, I$/D$/AXI, 16×16 INT8 NPU, 8-lane SIMT GPU, the **unified
+RV32I+Zicsr+trap+FENCE.I core, I-cache/D-cache/AXI, 16×16 INT8 NPU, 8-lane SIMT GPU, the **unified
 shared-DSP fabric**, Pmod peripherals, dual-core variants, the Zynq platform + ARM monitor, and the
 PC GUI/console are all complete and **verified on real XC7Z020 silicon @ 100 MHz** — including a
 14/14 on-board test suite and live register read-back in the GUI.
