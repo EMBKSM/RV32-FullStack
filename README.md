@@ -12,26 +12,9 @@ UART, runs on the board, and the registers update **live**.
 > is **verified on real silicon** (14/14 on-board tests pass @ 100 MHz). See
 > [`docs/UNIFIED_NPU_GPU.md`](docs/UNIFIED_NPU_GPU.md).
 
-```
- PC  ── rv32_gui.py / rv32_console.py  (assembler + UART console, live register view)
-  │   USB-UART 115200 8N1
-  ▼
- Zynq PS (ARM Cortex-A9) ── rv32_monitor.c   (command parser → AXI-Lite driver)
-  │   AXI4-Lite  M_AXI_GP0 @ 0x4000_0000
-  ▼
- Zynq PL  =  rv32_platform
-  ┌───────────────────────────────────────────────────────────────────────┐
-  │  rv32_ctrl_axi   (load imem/dmem, run/step/reset, read regs/PC/commit)  │
-  │       │                                                                 │
-  │   RV32I core (5-stage, I$/D$, Zicsr/trap/FENCE.I)                        │
-  │       │ data bus → mmio_bridge ─┬─ 0x1xxx  Pmod MMIO (SPI/I2C/UART/PWM)  │
-  │       │                         ├─ 0x3xxx  NPU  (16×16 INT8 GEMM)        │
-  │       │                         └─ 0x4xxx  GPU  (8-lane SIMT vector)     │
-  │                                                                         │
-  │   ▟ UNIFIED FABRIC: 8 of the NPU's PEs are dual-mode — one DSP48E1 does  │
-  │     NPU INT8 MAC (A*B+P)  OR  a GPU lane multiply-add (A*B+C), by mode.  │
-  └───────────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/system_architecture.svg" alt="RV32-FullStack SoC data path — Host PC over USB-UART to the Zynq PS (ARM Cortex-A9 monitor), then AXI4-Lite into the Zynq PL: rv32_ctrl_axi, the RV32I 5-stage core, and mmio_bridge fanning out to Pmod MMIO, the 16x16 INT8 NPU and the 8-lane SIMT GPU, with the unified shared-DSP fabric where the GPU borrows 8 NPU DSPs for 0 extra DSP (202/220)." width="820">
+</p>
 
 ---
 
